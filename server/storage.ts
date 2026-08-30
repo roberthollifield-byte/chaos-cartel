@@ -1,0 +1,439 @@
+// ============================================================
+// Chaos Cartel — PostgreSQL storage layer (drizzle-orm + pg)
+// Uses process.env.DATABASE_URL (auto-injected by Railway's
+// Postgres plugin). Bootstraps schema on startup for zero-touch
+// deploys.
+// ============================================================
+import {
+  users, events, registrations, products, orders, crewMembers,
+  type User, type InsertUser,
+  type Event, type InsertEvent, type EventAvailability,
+  type Registration, type InsertRegistration,
+  type Product, type InsertProduct,
+  type Order,
+  type CrewMember, type InsertCrew,
+} from '@shared/schema';
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+import { eq, and, desc, sql } from "drizzle-orm";
+
+const { Pool } = pg;
+
+if (!process.env.DATABASE_URL) {
+  throw new Error(
+    "DATABASE_URL is not set. Provide a PostgreSQL connection string.\n" +
+    "  • Railway: add the Postgres plugin — DATABASE_URL is auto-injected.\n" +
+    "  • Local dev: run docker compose up -d and use the URL from .env.example."
+  );
+}
+
+// SSL config: Railway managed Postgres uses valid certs, but some providers
+// (including Railway's public proxy) require a permissive TLS handshake.
+const needsSSL = /sslmode=require|railway|render|supabase|neon/.test(process.env.DATABASE_URL);
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: needsSSL ? { rejectUnauthorized: false } : undefined,
+});
+
+export const db = drizzle(pool);
+
+// ============ SCHEMA BOOTSTRAP ============
+// Idempotent CREATE TABLE IF NOT EXISTS so Railway boots clean without a
+// separate migration step. For production migrations use `npm run db:push`.
+export async function bootstrapSchema() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
+      password TEXT NOT NULL,
+      is_admin BOOLEAN NOT NULL DEFAULT false
+    );
+    CREATE TABLE IF NOT EXISTS events (
+      id SERIAL PRIMARY KEY,
+      slug TEXT NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      subtitle TEXT,
+      description TEXT NOT NULL DEFAULT '',
+      location TEXT NOT NULL DEFAULT 'Forest City, NC',
+      venue TEXT,
+      starts_at BIGINT NOT NULL,
+      ends_at BIGINT NOT NULL,
+      driver_price_cents INTEGER NOT NULL DEFAULT 11000,
+      driver_slots INTEGER NOT NULL DEFAULT 20,
+      ride_along_price_cents INTEGER NOT NULL DEFAULT 2500,
+      ride_along_slots INTEGER NOT NULL DEFAULT 40,
+      spectator_price_cents INTEGER NOT NULL DEFAULT 1000,
+      spectator_slots INTEGER NOT NULL DEFAULT 200,
+      status TEXT NOT NULL DEFAULT 'published',
+      hero_image_url TEXT,
+      created_at BIGINT NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS registrations (
+      id SERIAL PRIMARY KEY,
+      event_id INTEGER NOT NULL,
+      ticket_type TEXT NOT NULL,
+      first_name TEXT NOT NULL,
+      last_name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      emergency_contact_name TEXT,
+      emergency_contact_phone TEXT,
+      car_year TEXT,
+      car_make TEXT,
+      car_model TEXT,
+      car_color TEXT,
+      tech_inspection TEXT,
+      experience_level TEXT,
+      waiver_signed BOOLEAN NOT NULL DEFAULT false,
+      waiver_signed_at BIGINT,
+      waiver_signature_name TEXT,
+      stripe_session_id TEXT,
+      stripe_payment_intent_id TEXT,
+      amount_paid_cents INTEGER NOT NULL DEFAULT 0,
+      payment_status TEXT NOT NULL DEFAULT 'pending',
+      created_at BIGINT NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_registrations_event ON registrations(event_id);
+    CREATE INDEX IF NOT EXISTS idx_registrations_stripe ON registrations(stripe_session_id);
+    CREATE TABLE IF NOT EXISTS products (
+      id SERIAL PRIMARY KEY,
+      slug TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      price_cents INTEGER NOT NULL,
+      image_url TEXT,
+      category TEXT NOT NULL DEFAULT 'apparel',
+      sizes TEXT,
+      in_stock BOOLEAN NOT NULL DEFAULT true,
+      created_at BIGINT NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS orders (
+      id SERIAL PRIMARY KEY,
+      product_id INTEGER NOT NULL,
+      size TEXT,
+      first_name TEXT NOT NULL,
+      last_name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT,
+      shipping_address TEXT NOT NULL,
+      shipping_city TEXT NOT NULL,
+      shipping_state TEXT NOT NULL,
+      shipping_zip TEXT NOT NULL,
+      stripe_session_id TEXT,
+      stripe_payment_intent_id TEXT,
+      amount_paid_cents INTEGER NOT NULL DEFAULT 0,
+      payment_status TEXT NOT NULL DEFAULT 'pending',
+      created_at BIGINT NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_orders_stripe ON orders(stripe_session_id);
+    CREATE TABLE IF NOT EXISTS crew_members (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL,
+      car TEXT,
+      bio TEXT NOT NULL DEFAULT '',
+      image_url TEXT,
+      instagram TEXT,
+      display_order INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+}
+
+export interface IStorage {
+  // Events
+  listEvents(): Promise<EventAvailability[]>;
+  getEventBySlug(slug: string): Promise<EventAvailability | undefined>;
+  getEventById(id: number): Promise<EventAvailability | undefined>;
+  createEvent(data: InsertEvent): Promise<Event>;
+  updateEvent(id: number, data: Partial<InsertEvent>): Promise<Event | undefined>;
+  deleteEvent(id: number): Promise<boolean>;
+
+  // Registrations
+  createRegistration(data: Partial<Registration>): Promise<Registration>;
+  updateRegistrationBySession(sessionId: string, patch: Partial<Registration>): Promise<Registration | undefined>;
+  listRegistrations(eventId?: number): Promise<Registration[]>;
+  getRegistrationById(id: number): Promise<Registration | undefined>;
+  countBookedByType(eventId: number): Promise<{ driver: number; ride_along: number; spectator: number }>;
+
+  // Products
+  listProducts(): Promise<Product[]>;
+  getProductBySlug(slug: string): Promise<Product | undefined>;
+  getProductById(id: number): Promise<Product | undefined>;
+  createProduct(data: InsertProduct): Promise<Product>;
+  updateProduct(id: number, data: Partial<InsertProduct>): Promise<Product | undefined>;
+  deleteProduct(id: number): Promise<boolean>;
+
+  // Merch orders
+  createOrder(data: Partial<Order>): Promise<Order>;
+  updateOrderBySession(sessionId: string, patch: Partial<Order>): Promise<Order | undefined>;
+  listOrders(): Promise<Order[]>;
+
+  // Crew
+  listCrew(): Promise<CrewMember[]>;
+  createCrewMember(data: InsertCrew): Promise<CrewMember>;
+  updateCrewMember(id: number, data: Partial<InsertCrew>): Promise<CrewMember | undefined>;
+  deleteCrewMember(id: number): Promise<boolean>;
+
+  // Auth
+  getUserByUsername(username: string): Promise<User | undefined>;
+  createUser(user: InsertUser & { isAdmin?: boolean }): Promise<User>;
+}
+
+const first = <T>(rows: T[]): T | undefined => rows[0];
+
+export class DatabaseStorage implements IStorage {
+  private async attach(event: Event): Promise<EventAvailability> {
+    const counts = await this.countBookedByType(event.id);
+    return {
+      ...event,
+      driverBooked: counts.driver,
+      rideAlongBooked: counts.ride_along,
+      spectatorBooked: counts.spectator,
+      driverRemaining: Math.max(0, event.driverSlots - counts.driver),
+      rideAlongRemaining: Math.max(0, event.rideAlongSlots - counts.ride_along),
+      spectatorRemaining: Math.max(0, event.spectatorSlots - counts.spectator),
+    };
+  }
+
+  async listEvents(): Promise<EventAvailability[]> {
+    const rows = await db.select().from(events).orderBy(events.startsAt);
+    return Promise.all(rows.map(r => this.attach(r)));
+  }
+  async getEventBySlug(slug: string) {
+    const row = first(await db.select().from(events).where(eq(events.slug, slug)));
+    return row ? this.attach(row) : undefined;
+  }
+  async getEventById(id: number) {
+    const row = first(await db.select().from(events).where(eq(events.id, id)));
+    return row ? this.attach(row) : undefined;
+  }
+  async createEvent(data: InsertEvent): Promise<Event> {
+    const rows = await db.insert(events).values({ ...data, createdAt: Math.floor(Date.now() / 1000) }).returning();
+    return rows[0];
+  }
+  async updateEvent(id: number, data: Partial<InsertEvent>) {
+    return first(await db.update(events).set(data).where(eq(events.id, id)).returning());
+  }
+  async deleteEvent(id: number): Promise<boolean> {
+    const rows = await db.delete(events).where(eq(events.id, id)).returning({ id: events.id });
+    return rows.length > 0;
+  }
+
+  async createRegistration(data: Partial<Registration>): Promise<Registration> {
+    const rows = await db.insert(registrations).values({
+      ...(data as any),
+      createdAt: Math.floor(Date.now() / 1000),
+    }).returning();
+    return rows[0];
+  }
+  async updateRegistrationBySession(sessionId: string, patch: Partial<Registration>) {
+    return first(await db.update(registrations).set(patch).where(eq(registrations.stripeSessionId, sessionId)).returning());
+  }
+  async listRegistrations(eventId?: number) {
+    if (eventId != null) {
+      return db.select().from(registrations).where(eq(registrations.eventId, eventId)).orderBy(desc(registrations.createdAt));
+    }
+    return db.select().from(registrations).orderBy(desc(registrations.createdAt));
+  }
+  async getRegistrationById(id: number) {
+    return first(await db.select().from(registrations).where(eq(registrations.id, id)));
+  }
+  async countBookedByType(eventId: number) {
+    const rows = await db.select({
+      ticketType: registrations.ticketType,
+      c: sql<number>`count(*)::int`,
+    })
+    .from(registrations)
+    .where(and(eq(registrations.eventId, eventId), eq(registrations.paymentStatus, 'paid')))
+    .groupBy(registrations.ticketType) as { ticketType: string; c: number }[];
+    const out = { driver: 0, ride_along: 0, spectator: 0 };
+    for (const r of rows) {
+      if (r.ticketType === 'driver') out.driver = Number(r.c);
+      else if (r.ticketType === 'ride_along') out.ride_along = Number(r.c);
+      else if (r.ticketType === 'spectator') out.spectator = Number(r.c);
+    }
+    return out;
+  }
+
+  async listProducts() { return db.select().from(products); }
+  async getProductBySlug(slug: string) { return first(await db.select().from(products).where(eq(products.slug, slug))); }
+  async getProductById(id: number) { return first(await db.select().from(products).where(eq(products.id, id))); }
+  async createProduct(data: InsertProduct) {
+    const rows = await db.insert(products).values({ ...data, createdAt: Math.floor(Date.now() / 1000) }).returning();
+    return rows[0];
+  }
+  async updateProduct(id: number, data: Partial<InsertProduct>) {
+    return first(await db.update(products).set(data).where(eq(products.id, id)).returning());
+  }
+  async deleteProduct(id: number): Promise<boolean> {
+    const rows = await db.delete(products).where(eq(products.id, id)).returning({ id: products.id });
+    return rows.length > 0;
+  }
+
+  async createOrder(data: Partial<Order>): Promise<Order> {
+    const rows = await db.insert(orders).values({ ...(data as any), createdAt: Math.floor(Date.now() / 1000) }).returning();
+    return rows[0];
+  }
+  async updateOrderBySession(sessionId: string, patch: Partial<Order>) {
+    return first(await db.update(orders).set(patch).where(eq(orders.stripeSessionId, sessionId)).returning());
+  }
+  async listOrders() { return db.select().from(orders).orderBy(desc(orders.createdAt)); }
+
+  async listCrew() { return db.select().from(crewMembers).orderBy(crewMembers.displayOrder); }
+  async createCrewMember(data: InsertCrew) {
+    const rows = await db.insert(crewMembers).values(data).returning();
+    return rows[0];
+  }
+  async updateCrewMember(id: number, data: Partial<InsertCrew>) {
+    return first(await db.update(crewMembers).set(data).where(eq(crewMembers.id, id)).returning());
+  }
+  async deleteCrewMember(id: number): Promise<boolean> {
+    const rows = await db.delete(crewMembers).where(eq(crewMembers.id, id)).returning({ id: crewMembers.id });
+    return rows.length > 0;
+  }
+
+  async getUserByUsername(username: string) {
+    return first(await db.select().from(users).where(eq(users.username, username)));
+  }
+  async createUser(u: InsertUser & { isAdmin?: boolean }) {
+    const rows = await db.insert(users).values({
+      username: u.username,
+      password: u.password,
+      isAdmin: !!u.isAdmin,
+    }).returning();
+    return rows[0];
+  }
+}
+
+export const storage = new DatabaseStorage();
+
+// ============ SEED PLACEHOLDER DATA ============
+// Runs once on empty DB. Safe to leave enabled — no-op if events already exist.
+export async function seed() {
+  await bootstrapSchema();
+  const existing = await db.select().from(events);
+  if (existing.length > 0) return;
+  const now = Math.floor(Date.now() / 1000);
+  const day = 86400;
+  await storage.createEvent({
+    slug: "round-1-forest-city",
+    title: "ROUND 1",
+    subtitle: "Open Drift Practice",
+    description: "Season opener. All-day open track for drivers who want seat time. Ride-alongs open all day. Spectators welcome — bring a chair, bring earplugs.",
+    location: "Forest City, NC",
+    venue: "Chaos Cartel Track",
+    startsAt: now + 21 * day,
+    endsAt: now + 21 * day + 6 * 3600,
+    driverPriceCents: 11000,
+    driverSlots: 24,
+    rideAlongPriceCents: 2500,
+    rideAlongSlots: 40,
+    spectatorPriceCents: 1000,
+    spectatorSlots: 200,
+    status: "published",
+    heroImageUrl: null,
+  });
+  await storage.createEvent({
+    slug: "round-2-seat-time-saturday",
+    title: "ROUND 2",
+    subtitle: "Seat Time Saturday",
+    description: "Half-day mid-season practice. Great for beginners looking for coached seat time. Limited driver spots.",
+    location: "Forest City, NC",
+    venue: "Chaos Cartel Track",
+    startsAt: now + 42 * day,
+    endsAt: now + 42 * day + 6 * 3600,
+    driverPriceCents: 12000,
+    driverSlots: 18,
+    rideAlongPriceCents: 2500,
+    rideAlongSlots: 32,
+    spectatorPriceCents: 1000,
+    spectatorSlots: 200,
+    status: "published",
+    heroImageUrl: null,
+  });
+  await storage.createEvent({
+    slug: "round-3-night-slide",
+    title: "ROUND 3",
+    subtitle: "Night Slide",
+    description: "After-dark session under the lights. Sparks and flames — literally. Reduced driver count.",
+    location: "Forest City, NC",
+    venue: "Chaos Cartel Track",
+    startsAt: now + 70 * day,
+    endsAt: now + 70 * day + 5 * 3600,
+    driverPriceCents: 13500,
+    driverSlots: 16,
+    rideAlongPriceCents: 3000,
+    rideAlongSlots: 30,
+    spectatorPriceCents: 1500,
+    spectatorSlots: 200,
+    status: "published",
+    heroImageUrl: null,
+  });
+
+  await storage.createProduct({
+    slug: "chaos-cartel-tee-black",
+    name: "Chaos Cartel Tee — Black",
+    description: "Heavyweight 100% cotton tee. Big neon Chaos Cartel wordmark on the front, small crew mark on the back.",
+    priceCents: 3500,
+    imageUrl: null,
+    category: "apparel",
+    sizes: JSON.stringify(["S", "M", "L", "XL", "XXL"]),
+    inStock: true,
+  });
+  await storage.createProduct({
+    slug: "smoke-hoodie",
+    name: "Tire Smoke Hoodie",
+    description: "Midweight fleece hoodie with a full-back print of the AE86 you know from the poster.",
+    priceCents: 6500,
+    imageUrl: null,
+    category: "apparel",
+    sizes: JSON.stringify(["S", "M", "L", "XL", "XXL"]),
+    inStock: true,
+  });
+  await storage.createProduct({
+    slug: "chaos-cartel-sticker-pack",
+    name: "Sticker Pack — 5 Pack",
+    description: "Five 3\" die-cut vinyl stickers. Weatherproof. Slap them on your helmet, cage, or toolbox.",
+    priceCents: 1000,
+    imageUrl: null,
+    category: "stickers",
+    sizes: null,
+    inStock: true,
+  });
+
+  await storage.createCrewMember({
+    name: "Rob",
+    role: "Founder / Lead Driver",
+    car: "1986 Toyota Corolla AE86",
+    bio: "Started Chaos Cartel out of Rob's Rod Shop. Runs the show and the track.",
+    imageUrl: null,
+    instagram: null,
+    displayOrder: 0,
+  });
+  await storage.createCrewMember({
+    name: "TBD",
+    role: "Driver",
+    car: "Nissan 240SX",
+    bio: "Roster spot — add your crew from the admin panel.",
+    imageUrl: null,
+    instagram: null,
+    displayOrder: 1,
+  });
+  await storage.createCrewMember({
+    name: "TBD",
+    role: "Coach / Tech",
+    car: "BMW E36",
+    bio: "Handles rookie coaching and pre-run tech inspections.",
+    imageUrl: null,
+    instagram: null,
+    displayOrder: 2,
+  });
+
+  // Default admin user — override via ADMIN_USERNAME / ADMIN_PASSWORD in production.
+  await storage.createUser({
+    username: process.env.ADMIN_USERNAME || "admin",
+    password: process.env.ADMIN_PASSWORD || "chaoscartel",
+    isAdmin: true,
+  });
+  console.log("[seed] Chaos Cartel bootstrap complete");
+}

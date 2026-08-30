@@ -1,0 +1,262 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   CHAOS CARTEL — DRIFT TEAM DESIGN SYSTEM
+   Deep black + neon lime, magenta, cyan, purple
+   ============================================ */
+
+@import url("https://api.fontshare.com/v2/css?f[]=clash-display@600,700&f[]=cabinet-grotesk@500,700,800,900&f[]=satoshi@400,500,700&display=swap");
+
+:root {
+  --button-outline: rgba(255, 255, 255, 0.15);
+  --badge-outline: rgba(255, 255, 255, 0.1);
+  --opaque-button-border-intensity: 12;
+  --elevate-1: rgba(255, 255, 255, 0.04);
+  --elevate-2: rgba(255, 255, 255, 0.08);
+
+  /* Chaos Cartel palette — mapped into shadcn tokens */
+  --background: 240 8% 5%;                 /* deep near-black */
+  --foreground: 60 15% 96%;                /* off-white body */
+  --border: 260 15% 18%;
+  --card: 240 10% 8%;
+  --card-foreground: 60 15% 96%;
+  --card-border: 260 15% 22%;
+  --sidebar: 240 10% 7%;
+  --sidebar-foreground: 60 15% 96%;
+  --sidebar-border: 260 15% 20%;
+  --sidebar-primary: 74 92% 55%;
+  --sidebar-primary-foreground: 240 15% 6%;
+  --sidebar-accent: 260 15% 15%;
+  --sidebar-accent-foreground: 60 15% 96%;
+  --sidebar-ring: 74 92% 55%;
+  --popover: 240 10% 8%;
+  --popover-foreground: 60 15% 96%;
+  --popover-border: 260 15% 22%;
+  /* Primary = neon lime (main CTA color from reference) */
+  --primary: 74 92% 55%;
+  --primary-foreground: 240 15% 6%;
+  /* Secondary = deep neutral for less-important actions */
+  --secondary: 260 15% 15%;
+  --secondary-foreground: 60 15% 96%;
+  --muted: 260 12% 13%;
+  --muted-foreground: 240 5% 65%;
+  /* Accent = cyan */
+  --accent: 178 90% 55%;
+  --accent-foreground: 240 15% 6%;
+  --destructive: 340 90% 60%;
+  --destructive-foreground: 60 15% 96%;
+  --input: 260 15% 22%;
+  --ring: 74 92% 55%;
+
+  /* Brand neons (custom, referenced with hsl(var(--cc-*))) */
+  --cc-lime: 74 92% 55%;         /* #C4F02E */
+  --cc-magenta: 320 95% 60%;     /* #F238B5 */
+  --cc-cyan: 178 90% 55%;        /* #26E7DF */
+  --cc-purple: 275 85% 62%;      /* #A94EF0 */
+  --cc-hot-pink: 335 100% 62%;   /* #FF3F86 */
+  --cc-bg-pure: 240 12% 4%;      /* pure card black */
+
+  --chart-1: 74 92% 55%;
+  --chart-2: 320 95% 60%;
+  --chart-3: 178 90% 55%;
+  --chart-4: 275 85% 62%;
+  --chart-5: 335 100% 62%;
+
+  --font-sans: 'Cabinet Grotesk', 'Satoshi', system-ui, sans-serif;
+  --font-display: 'Clash Display', 'Cabinet Grotesk', system-ui, sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  --radius: 0.5rem;
+
+  --shadow-glow-lime: 0 0 32px hsl(var(--cc-lime) / 0.35), 0 0 8px hsl(var(--cc-lime) / 0.6);
+  --shadow-glow-magenta: 0 0 32px hsl(var(--cc-magenta) / 0.4), 0 0 8px hsl(var(--cc-magenta) / 0.6);
+  --shadow-glow-cyan: 0 0 32px hsl(var(--cc-cyan) / 0.35), 0 0 8px hsl(var(--cc-cyan) / 0.55);
+}
+
+/* Force dark-first — this site has no light mode */
+.dark, :root {
+  color-scheme: dark;
+}
+
+@layer base {
+  * { border-color: hsl(var(--border)); }
+  html, body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    /* subtle scanline / grain texture */
+    background-image:
+      radial-gradient(circle at 15% 20%, hsl(var(--cc-purple) / 0.08), transparent 50%),
+      radial-gradient(circle at 85% 80%, hsl(var(--cc-magenta) / 0.06), transparent 55%);
+    background-attachment: fixed;
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+    line-height: 0.95;
+  }
+  ::selection {
+    background: hsl(var(--cc-lime) / 0.85);
+    color: hsl(var(--cc-bg-pure));
+  }
+}
+
+/* ============================================
+   BRAND UTILITIES
+   ============================================ */
+@layer utilities {
+  .font-display { font-family: var(--font-display); }
+  .font-body { font-family: var(--font-sans); }
+  .font-mono { font-family: var(--font-mono); }
+
+  .text-cc-lime { color: hsl(var(--cc-lime)); }
+  .text-cc-magenta { color: hsl(var(--cc-magenta)); }
+  .text-cc-cyan { color: hsl(var(--cc-cyan)); }
+  .text-cc-purple { color: hsl(var(--cc-purple)); }
+  .text-cc-hot-pink { color: hsl(var(--cc-hot-pink)); }
+
+  .bg-cc-lime { background-color: hsl(var(--cc-lime)); }
+  .bg-cc-magenta { background-color: hsl(var(--cc-magenta)); }
+  .bg-cc-cyan { background-color: hsl(var(--cc-cyan)); }
+  .bg-cc-purple { background-color: hsl(var(--cc-purple)); }
+  .bg-cc-black { background-color: hsl(var(--cc-bg-pure)); }
+
+  .border-cc-lime { border-color: hsl(var(--cc-lime)); }
+  .border-cc-magenta { border-color: hsl(var(--cc-magenta)); }
+  .border-cc-cyan { border-color: hsl(var(--cc-cyan)); }
+  .border-cc-purple { border-color: hsl(var(--cc-purple)); }
+
+  .glow-lime { box-shadow: var(--shadow-glow-lime); }
+  .glow-magenta { box-shadow: var(--shadow-glow-magenta); }
+  .glow-cyan { box-shadow: var(--shadow-glow-cyan); }
+
+  .text-shadow-neon-lime {
+    text-shadow: 0 0 24px hsl(var(--cc-lime) / 0.55), 0 0 4px hsl(var(--cc-lime) / 0.9);
+  }
+  .text-shadow-neon-magenta {
+    text-shadow: 0 0 24px hsl(var(--cc-magenta) / 0.55), 0 0 4px hsl(var(--cc-magenta) / 0.9);
+  }
+  .text-shadow-neon-cyan {
+    text-shadow: 0 0 24px hsl(var(--cc-cyan) / 0.55), 0 0 4px hsl(var(--cc-cyan) / 0.9);
+  }
+
+  /* Grunge / halftone overlay */
+  .grunge {
+    position: relative;
+  }
+  .grunge::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence baseFrequency='0.9' numOctaves='2' seed='7'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.08 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    background-repeat: repeat;
+    mix-blend-mode: overlay;
+    opacity: 0.4;
+    z-index: 1;
+  }
+
+  /* Checkered flag pattern (used sparingly, corner accents) */
+  .checkered {
+    background-image:
+      linear-gradient(45deg, hsl(var(--cc-lime)) 25%, transparent 25%),
+      linear-gradient(-45deg, hsl(var(--cc-lime)) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, hsl(var(--cc-lime)) 75%),
+      linear-gradient(-45deg, transparent 75%, hsl(var(--cc-lime)) 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  }
+  .checkered-magenta {
+    background-image:
+      linear-gradient(45deg, hsl(var(--cc-magenta)) 25%, transparent 25%),
+      linear-gradient(-45deg, hsl(var(--cc-magenta)) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, hsl(var(--cc-magenta)) 75%),
+      linear-gradient(-45deg, transparent 75%, hsl(var(--cc-magenta)) 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  }
+
+  /* Marquee scrolling ticker */
+  @keyframes cc-marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  .cc-marquee {
+    display: flex;
+    width: max-content;
+    animation: cc-marquee 28s linear infinite;
+  }
+
+  /* Angled slash accent under headers */
+  .slash-under {
+    position: relative;
+    display: inline-block;
+  }
+  .slash-under::after {
+    content: "";
+    position: absolute;
+    left: -4%;
+    right: -4%;
+    bottom: -0.12em;
+    height: 0.14em;
+    background: linear-gradient(90deg, hsl(var(--cc-magenta)), hsl(var(--cc-cyan)));
+    transform: skewX(-14deg);
+    border-radius: 2px;
+  }
+
+  /* Skewed italic display treatment used on hero */
+  .cc-skew {
+    transform: skew(-8deg, 0);
+    display: inline-block;
+  }
+
+  /* Neon outlined button */
+  .btn-neon-lime {
+    background: hsl(var(--cc-lime));
+    color: hsl(var(--cc-bg-pure));
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    box-shadow: var(--shadow-glow-lime);
+    transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 180ms;
+  }
+  .btn-neon-lime:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 44px hsl(var(--cc-lime) / 0.6), 0 0 12px hsl(var(--cc-lime) / 0.9);
+  }
+  .btn-neon-outline-cyan {
+    background: transparent;
+    color: hsl(var(--cc-cyan));
+    border: 2px solid hsl(var(--cc-cyan));
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 180ms, background 180ms;
+  }
+  .btn-neon-outline-cyan:hover {
+    background: hsl(var(--cc-cyan) / 0.1);
+    box-shadow: var(--shadow-glow-cyan);
+    transform: translateY(-2px);
+  }
+}
+
+/* Fine-tune scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: hsl(var(--cc-bg-pure)); }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(hsl(var(--cc-magenta)), hsl(var(--cc-purple)));
+  border-radius: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-marquee { animation: none; }
+  * { transition-duration: 0.01ms !important; }
+}
