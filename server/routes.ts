@@ -295,11 +295,59 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ============ STRIPE WEBHOOK ============
-  // Note: signature verification skipped for preview (no webhook secret).
-  // In Railway, add STRIPE_WEBHOOK_SECRET and implement raw-body signature verification.
+  // In production (STRIPE_WEBHOOK_SECRET set), verify the Stripe-Signature header
+  // against the raw request body using HMAC-SHA256 (Stripe's v1 signing scheme).
+  // In preview / dev mode with no secret, accept unsigned payloads for testing.
   app.post("/api/stripe/webhook", async (req, res) => {
     try {
-      const event = req.body;
+      const secret = process.env.STRIPE_WEBHOOK_SECRET;
+      let event: any = req.body;
+
+      if (secret) {
+        const sigHeader = req.header("stripe-signature") || "";
+        const raw = (req as any).rawBody as Buffer | undefined;
+        if (!raw) {
+          console.error("webhook: missing raw body");
+          return res.status(400).send("missing raw body");
+        }
+        // Parse t=... and v1=... pairs from the Stripe-Signature header
+        const parts = sigHeader.split(",").map((p) => p.trim().split("="));
+        const t = parts.find(([k]) => k === "t")?.[1];
+        const sigs = parts.filter(([k]) => k === "v1").map(([, v]) => v);
+        if (!t || sigs.length === 0) {
+          console.error("webhook: malformed signature header");
+          return res.status(400).send("malformed signature");
+        }
+        // Reject events older than 5 minutes (Stripe recommended tolerance)
+        const nowSec = Math.floor(Date.now() / 1000);
+        if (Math.abs(nowSec - parseInt(t, 10)) > 300) {
+          console.error("webhook: timestamp outside tolerance");
+          return res.status(400).send("timestamp outside tolerance");
+        }
+        const crypto = await import("node:crypto");
+        const signedPayload = `${t}.${raw.toString("utf8")}`;
+        const expected = crypto.createHmac("sha256", secret).update(signedPayload).digest("hex");
+        const expectedBuf = Buffer.from(expected, "hex");
+        const valid = sigs.some((s) => {
+          try {
+            const sBuf = Buffer.from(s, "hex");
+            return sBuf.length === expectedBuf.length && crypto.timingSafeEqual(sBuf, expectedBuf);
+          } catch {
+            return false;
+          }
+        });
+        if (!valid) {
+          console.error("webhook: invalid signature");
+          return res.status(400).send("invalid signature");
+        }
+        // Signature verified — parse the raw body as our trusted event object
+        try {
+          event = JSON.parse(raw.toString("utf8"));
+        } catch {
+          return res.status(400).send("invalid json");
+        }
+      }
+
       if (event?.type === "checkout.session.completed") {
         const s = event.data.object;
         const kind = s.metadata?.kind;
