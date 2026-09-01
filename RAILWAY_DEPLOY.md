@@ -65,9 +65,9 @@ gh repo create chaos-cartel --public --source=. --push
 
 ---
 
-## 4. Point ChaosCartel.com at Railway
+## 4. Point ChaosCartel.net at Railway
 
-1. In Railway → your service → **Settings → Networking → Custom Domain**. Add `chaoscartel.com` and `www.chaoscartel.com`.
+1. In Railway → your service → **Settings → Networking → Custom Domain**. Add `chaoscartel.net` and `www.chaoscartel.net`.
 2. Railway shows you a CNAME target (like `xyz.up.railway.app`).
 3. In Cloudflare (your registrar):
    - `www` → CNAME → `xyz.up.railway.app` — proxy **DNS only** (grey cloud, not orange)

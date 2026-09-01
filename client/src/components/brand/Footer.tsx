@@ -26,7 +26,7 @@ export function Footer() {
           <div className="font-display font-bold text-cc-magenta tracking-widest mb-4">CONTACT</div>
           <ul className="space-y-2.5 text-muted-foreground">
             <li className="flex items-center gap-2"><MapPin size={16} className="text-cc-lime" /> Forest City, NC</li>
-            <li className="flex items-center gap-2"><Mail size={16} className="text-cc-lime" /> hello@chaoscartel.com</li>
+            <li className="flex items-center gap-2"><Mail size={16} className="text-cc-lime" /> hello@chaoscartel.net</li>
             <li className="flex items-center gap-2"><Instagram size={16} className="text-cc-lime" /> @chaoscartel</li>
           </ul>
         </div>
