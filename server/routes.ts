@@ -208,10 +208,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             "metadata[registration_id]": reg.id,
           },
         });
-        await storage.updateRegistrationBySession(reg.stripeSessionId || "__none__", {}); // no-op safe
         // Save session id on the registration
-        const updated = await storage.updateRegistrationBySession(session.id, {});
-        // Direct sqlite update since session id isn't set yet
         const { db } = await import("./storage");
         const { registrations } = await import("@shared/schema");
         const { eq } = await import("drizzle-orm");
