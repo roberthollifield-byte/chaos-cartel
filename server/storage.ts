@@ -98,6 +98,11 @@ export async function bootstrapSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_registrations_event ON registrations(event_id);
     CREATE INDEX IF NOT EXISTS idx_registrations_stripe ON registrations(stripe_session_id);
+    -- Registration check-in columns (idempotent for existing DBs)
+    ALTER TABLE registrations ADD COLUMN IF NOT EXISTS confirmation_code TEXT;
+    ALTER TABLE registrations ADD COLUMN IF NOT EXISTS checked_in_at BIGINT;
+    ALTER TABLE registrations ADD COLUMN IF NOT EXISTS checked_in_by TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_registrations_confirmation_code ON registrations (confirmation_code);
     CREATE TABLE IF NOT EXISTS products (
       id SERIAL PRIMARY KEY,
       slug TEXT NOT NULL UNIQUE,
@@ -154,8 +159,10 @@ export interface IStorage {
   // Registrations
   createRegistration(data: Partial<Registration>): Promise<Registration>;
   updateRegistrationBySession(sessionId: string, patch: Partial<Registration>): Promise<Registration | undefined>;
+  updateRegistrationById(id: number, patch: Partial<Registration>): Promise<Registration | undefined>;
   listRegistrations(eventId?: number): Promise<Registration[]>;
   getRegistrationById(id: number): Promise<Registration | undefined>;
+  getRegistrationByConfirmationCode(code: string): Promise<Registration | undefined>;
   countBookedByType(eventId: number): Promise<{ driver: number; ride_along: number; spectator: number }>;
 
   // Products
@@ -231,6 +238,12 @@ export class DatabaseStorage implements IStorage {
   }
   async updateRegistrationBySession(sessionId: string, patch: Partial<Registration>) {
     return first(await db.update(registrations).set(patch).where(eq(registrations.stripeSessionId, sessionId)).returning());
+  }
+  async updateRegistrationById(id: number, patch: Partial<Registration>) {
+    return first(await db.update(registrations).set(patch).where(eq(registrations.id, id)).returning());
+  }
+  async getRegistrationByConfirmationCode(code: string) {
+    return first(await db.select().from(registrations).where(eq(registrations.confirmationCode, code)));
   }
   async listRegistrations(eventId?: number) {
     if (eventId != null) {

@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { apiBase } from "@/lib/queryClient";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Download, LogOut, Plus, Trash2, Edit2, X } from "lucide-react";
+import { Download, LogOut, Plus, Trash2, Edit2, X, QrCode, FileText } from "lucide-react";
+import { Link } from "wouter";
 import { Shell } from "@/components/brand/Shell";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -100,9 +101,14 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             <p className="font-mono text-xs tracking-widest text-cc-cyan mb-2">// ADMIN</p>
             <h1 className="font-display font-extrabold text-4xl md:text-5xl italic text-cc-lime text-shadow-neon-lime cc-skew">COMMAND CENTER</h1>
           </div>
-          <button onClick={logout} className="inline-flex items-center gap-2 px-4 py-2 rounded-md btn-neon-outline-cyan text-sm" data-testid="button-logout">
-            <LogOut size={16}/> LOGOUT
-          </button>
+          <div className="flex items-center gap-3">
+            <Link href="/admin/checkin" className="inline-flex items-center gap-2 px-4 py-2 rounded-md btn-neon-lime text-sm" data-testid="button-checkin">
+              <QrCode size={16}/> GATE CHECK-IN
+            </Link>
+            <button onClick={logout} className="inline-flex items-center gap-2 px-4 py-2 rounded-md btn-neon-outline-cyan text-sm" data-testid="button-logout">
+              <LogOut size={16}/> LOGOUT
+            </button>
+          </div>
         </div>
 
         <div className="flex gap-2 border-b border-cc-purple/40 mb-8 overflow-x-auto">
@@ -171,6 +177,12 @@ function EventsPanel() {
                 <td className="p-3">{e.driverSlots}/{e.rideAlongSlots}/{e.spectatorSlots}</td>
                 <td className="p-3"><span className={`px-2 py-0.5 rounded text-xs ${e.status==='published' ? 'bg-cc-lime/20 text-cc-lime' : 'bg-muted text-muted-foreground'}`}>{e.status}</span></td>
                 <td className="p-3 text-right whitespace-nowrap">
+                  <a
+                    href={`/api/admin/roster/${e.id}/pdf`}
+                    className="text-cc-magenta hover:text-cc-lime mr-3 inline-flex items-center gap-1"
+                    title="Download roster PDF with tear-off QR labels"
+                    data-testid={`roster-pdf-${e.id}`}
+                  ><FileText size={16}/></a>
                   <button onClick={()=>setEditing(e)} className="text-cc-cyan hover:text-cc-lime mr-3" data-testid={`edit-event-${e.id}`}><Edit2 size={16}/></button>
                   <button onClick={()=>confirm(`Delete "${e.title}"?`) && del.mutate(e.id)} className="text-destructive hover:text-cc-hot-pink" data-testid={`delete-event-${e.id}`}><Trash2 size={16}/></button>
                 </td>

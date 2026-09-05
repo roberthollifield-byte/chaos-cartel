@@ -11,6 +11,7 @@ import {
   insertCrewSchema,
 } from "@shared/schema";
 import { z } from "zod";
+import { ensureConfirmationCode, sendConfirmationEmail, generateRosterPdf, ticketQrPng } from "./tickets";
 
 const STRIPE_API_LIVE = "https://api.stripe.com/v1";
 // Stripe is called directly on Railway using STRIPE_SECRET_KEY. In the preview
@@ -366,11 +367,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const s = event.data.object;
         const kind = s.metadata?.kind;
         if (kind === "registration") {
-          await storage.updateRegistrationBySession(s.id, {
+          const reg = await storage.updateRegistrationBySession(s.id, {
             paymentStatus: "paid",
             amountPaidCents: s.amount_total || 0,
             stripePaymentIntentId: s.payment_intent || null,
           });
+          if (reg) await issueTicketAndEmail(reg.id).catch(e => console.error("[tickets] issue failed", e));
         } else if (kind === "merch") {
           await storage.updateOrderBySession(s.id, {
             paymentStatus: "paid",
@@ -386,6 +388,80 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // ============ TICKET FETCH FOR THANKS PAGE ============
+  // Public: returns minimal info about a registration by id so the thanks page can render its QR.
+  // In preview mode a code is issued on demand for demo UX.
+  app.get("/api/registration/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ message: "bad id" });
+      let reg = await storage.getRegistrationById(id);
+      if (!reg) return res.status(404).json({ message: "not found" });
+      // Issue a code if payment succeeded (or preview) but code not yet set.
+      if (!reg.confirmationCode && (reg.paymentStatus === "paid" || reg.paymentStatus === "preview")) {
+        await ensureConfirmationCode(reg);
+        reg = await storage.getRegistrationById(id);
+      }
+      const event = await storage.getEventById(reg!.eventId);
+      res.json({
+        id: reg!.id,
+        firstName: reg!.firstName,
+        lastName: reg!.lastName,
+        ticketType: reg!.ticketType,
+        paymentStatus: reg!.paymentStatus,
+        confirmationCode: reg!.confirmationCode,
+        checkedInAt: reg!.checkedInAt,
+        event: event ? { title: event.title, subtitle: event.subtitle, startsAt: event.startsAt, endsAt: event.endsAt, location: event.location, venue: event.venue } : null,
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "error" });
+    }
+  });
+
+  // Public: raw QR PNG for a given confirmation code (safe: knowing the code IS the ticket)
+  app.get("/api/ticket-qr/:code.png", async (req, res) => {
+    try {
+      const code = req.params.code;
+      const reg = await storage.getRegistrationByConfirmationCode(code);
+      if (!reg) return res.status(404).send("not found");
+      const baseUrl = process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
+      const png = await ticketQrPng(code, baseUrl);
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.send(png);
+    } catch (err) {
+      console.error(err);
+      res.status(500).send("error");
+    }
+  });
+
+  // Internal helper: called by webhook + verify handlers when a registration flips to paid.
+  async function issueTicketAndEmail(registrationId: number) {
+    const reg = await storage.getRegistrationById(registrationId);
+    if (!reg) return;
+    const code = await ensureConfirmationCode(reg);
+    const event = await storage.getEventById(reg.eventId);
+    if (!event) return;
+    const baseUrl = process.env.APP_BASE_URL || "https://chaoscartel.net";
+    const eventDate = new Date(event.startsAt * 1000).toLocaleString("en-US", {
+      weekday: "long", month: "long", day: "numeric", year: "numeric",
+      hour: "numeric", minute: "2-digit", timeZone: "America/New_York", timeZoneName: "short",
+    });
+    await sendConfirmationEmail({
+      to: reg.email,
+      firstName: reg.firstName,
+      lastName: reg.lastName,
+      ticketType: reg.ticketType,
+      eventTitle: event.title,
+      eventSubtitle: event.subtitle,
+      eventDate,
+      eventLocation: `${event.venue ? event.venue + " \u2014 " : ""}${event.location}`,
+      code,
+      baseUrl,
+    });
+  }
+
   // ============ POLL: verify a session after redirect (fallback for no-webhook dev) ============
   app.get("/api/verify/:sessionId", async (req, res, next) => {
     try {
@@ -397,11 +473,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const kind = s.metadata?.kind;
       if (s.payment_status === "paid") {
         if (kind === "registration") {
-          await storage.updateRegistrationBySession(s.id, {
+          const reg = await storage.updateRegistrationBySession(s.id, {
             paymentStatus: "paid",
             amountPaidCents: s.amount_total || 0,
             stripePaymentIntentId: s.payment_intent || null,
           });
+          if (reg) await issueTicketAndEmail(reg.id).catch(e => console.error("[tickets] issue failed", e));
         } else if (kind === "merch") {
           await storage.updateOrderBySession(s.id, {
             paymentStatus: "paid",
@@ -540,6 +617,121 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/admin/crew/:id", requireAdmin, async (req, res) => {
     const ok = await storage.deleteCrewMember(Number(req.params.id));
     res.json({ ok });
+  });
+
+  // ============ ADMIN: CHECK-IN + ROSTER ============
+  // Live roster for one event (admin)
+  app.get("/api/admin/roster/:eventId", requireAdmin, async (req, res) => {
+    const eventId = Number(req.params.eventId);
+    const event = await storage.getEventById(eventId);
+    if (!event) return res.status(404).json({ message: "Event not found" });
+    const regs = await storage.listRegistrations(eventId);
+    const paid = regs.filter(r => r.paymentStatus === "paid" || r.paymentStatus === "preview");
+    const summary = {
+      drivers: paid.filter(r => r.ticketType === "driver"),
+      rideAlongs: paid.filter(r => r.ticketType === "ride_along"),
+      spectators: paid.filter(r => r.ticketType === "spectator"),
+    };
+    res.json({
+      event: { id: event.id, title: event.title, subtitle: event.subtitle, startsAt: event.startsAt, location: event.location, venue: event.venue },
+      totals: {
+        drivers: summary.drivers.length,
+        rideAlongs: summary.rideAlongs.length,
+        spectators: summary.spectators.length,
+        total: paid.length,
+        checkedIn: paid.filter(r => r.checkedInAt).length,
+      },
+      registrations: paid.map(r => ({
+        id: r.id, firstName: r.firstName, lastName: r.lastName, phone: r.phone, email: r.email,
+        ticketType: r.ticketType,
+        car: [r.carYear, r.carMake, r.carModel].filter(Boolean).join(" ") || null,
+        confirmationCode: r.confirmationCode,
+        checkedInAt: r.checkedInAt,
+        checkedInBy: r.checkedInBy,
+      })),
+    });
+  });
+
+  // Roster PDF export (with tear-off QR labels)
+  app.get("/api/admin/roster/:eventId/pdf", requireAdmin, async (req, res) => {
+    try {
+      const eventId = Number(req.params.eventId);
+      const event = await storage.getEventById(eventId);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      const allRegs = await storage.listRegistrations(eventId);
+      const paid = allRegs.filter(r => r.paymentStatus === "paid" || r.paymentStatus === "preview");
+      // Ensure every paid reg has a confirmation code (issue if missing)
+      for (const r of paid) {
+        if (!r.confirmationCode) await ensureConfirmationCode(r);
+      }
+      const refreshed = await storage.listRegistrations(eventId);
+      const paidRefreshed = refreshed.filter(r => r.paymentStatus === "paid" || r.paymentStatus === "preview");
+      const baseUrl = process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
+      const pdf = await generateRosterPdf({
+        event: { title: event.title, subtitle: event.subtitle, startsAt: event.startsAt, location: event.location, venue: event.venue },
+        registrations: paidRefreshed,
+        baseUrl,
+      });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="roster-${event.slug}-${Date.now()}.pdf"`);
+      res.send(pdf);
+    } catch (err) {
+      console.error("[roster pdf] error", err);
+      res.status(500).json({ message: "pdf generation failed" });
+    }
+  });
+
+  // Look up a code (used by scanner to preview before committing check-in)
+  app.get("/api/admin/checkin/:code", requireAdmin, async (req, res) => {
+    const code = req.params.code.trim().toUpperCase();
+    const reg = await storage.getRegistrationByConfirmationCode(code);
+    if (!reg) return res.status(404).json({ message: "Ticket not found" });
+    const event = await storage.getEventById(reg.eventId);
+    res.json({
+      registration: {
+        id: reg.id, firstName: reg.firstName, lastName: reg.lastName,
+        ticketType: reg.ticketType, paymentStatus: reg.paymentStatus,
+        confirmationCode: reg.confirmationCode,
+        car: [reg.carYear, reg.carMake, reg.carModel].filter(Boolean).join(" ") || null,
+        checkedInAt: reg.checkedInAt, checkedInBy: reg.checkedInBy,
+      },
+      event: event ? { id: event.id, title: event.title, subtitle: event.subtitle } : null,
+    });
+  });
+
+  // Actually mark a ticket checked in
+  app.post("/api/admin/checkin/:code", requireAdmin, async (req, res) => {
+    const code = req.params.code.trim().toUpperCase();
+    const reg = await storage.getRegistrationByConfirmationCode(code);
+    if (!reg) return res.status(404).json({ ok: false, reason: "not_found", message: "Ticket not found" });
+    if (reg.paymentStatus !== "paid" && reg.paymentStatus !== "preview") {
+      return res.status(400).json({ ok: false, reason: "unpaid", message: "Ticket not paid" });
+    }
+    if (reg.checkedInAt) {
+      return res.json({
+        ok: false, reason: "already_checked_in",
+        message: "Already checked in",
+        checkedInAt: reg.checkedInAt, checkedInBy: reg.checkedInBy,
+        registration: { id: reg.id, firstName: reg.firstName, lastName: reg.lastName, ticketType: reg.ticketType },
+      });
+    }
+    const now = Math.floor(Date.now() / 1000);
+    const adminName = (req.session as any)?.username || "admin";
+    const updated = await storage.updateRegistrationById(reg.id, { checkedInAt: now, checkedInBy: adminName });
+    res.json({
+      ok: true,
+      message: "Checked in",
+      registration: { id: updated!.id, firstName: updated!.firstName, lastName: updated!.lastName, ticketType: updated!.ticketType, checkedInAt: updated!.checkedInAt },
+    });
+  });
+
+  // Undo check-in
+  app.post("/api/admin/checkin/:code/undo", requireAdmin, async (req, res) => {
+    const code = req.params.code.trim().toUpperCase();
+    const reg = await storage.getRegistrationByConfirmationCode(code);
+    if (!reg) return res.status(404).json({ ok: false, message: "Ticket not found" });
+    await storage.updateRegistrationById(reg.id, { checkedInAt: null as any, checkedInBy: null as any });
+    res.json({ ok: true });
   });
 
   return httpServer;

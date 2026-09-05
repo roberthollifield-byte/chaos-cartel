@@ -21,6 +21,7 @@ import CrewPage from "@/pages/crew";
 import MerchPage from "@/pages/merch";
 import ThanksPage from "@/pages/thanks";
 import AdminPage from "@/pages/admin";
+import AdminCheckinPage from "@/pages/admin-checkin";
 
 function AppRouter() {
   return (
@@ -33,6 +34,7 @@ function AppRouter() {
       <Route path="/merch" component={MerchPage} />
       <Route path="/thanks" component={ThanksPage} />
       <Route path="/admin" component={AdminPage} />
+      <Route path="/admin/checkin" component={AdminCheckinPage} />
       <Route component={NotFound} />
     </Switch>
   );

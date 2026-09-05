@@ -83,6 +83,10 @@ export const registrations = pgTable("registrations", {
   stripePaymentIntentId: text("stripe_payment_intent_id"),
   amountPaidCents: integer("amount_paid_cents").notNull().default(0),
   paymentStatus: text("payment_status").notNull().default("pending"), // pending | paid | refunded | failed | preview
+  // Check-in / ticketing
+  confirmationCode: text("confirmation_code").unique(), // e.g. CC-A7K9-2Q4M — used as QR payload
+  checkedInAt: bigint("checked_in_at", { mode: "number" }), // null = not checked in
+  checkedInBy: text("checked_in_by"), // admin username who scanned
   createdAt: bigint("created_at", { mode: "number" }).notNull().default(0),
 });
 

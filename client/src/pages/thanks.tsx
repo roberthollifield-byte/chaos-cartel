@@ -1,24 +1,57 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { CheckCircle2, Zap } from "lucide-react";
+import QRCode from "qrcode";
 import { Shell } from "@/components/brand/Shell";
 
+interface RegistrationInfo {
+  id: number;
+  firstName: string;
+  lastName: string;
+  ticketType: string;
+  paymentStatus: string;
+  confirmationCode: string | null;
+  event: { title: string; subtitle: string | null; startsAt: number; location: string; venue: string | null } | null;
+}
+
 export default function ThanksPage() {
-  // Read query from hash: window.location.hash = '#/thanks?type=...&preview=1'
   const hashSearch = typeof window !== "undefined"
     ? (window.location.hash.split("?")[1] || "")
     : "";
   const params = new URLSearchParams(hashSearch);
   const type = params.get("type") || "registration";
   const isPreview = params.get("preview") === "1";
-  const [status, setStatus] = useState<"pending"|"paid"|"error">("pending");
+  const regId = params.get("id");
+  const [reg, setReg] = useState<RegistrationInfo | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    // Since we redirect from Stripe with our own success_url (not Stripe session_id),
-    // we don't have a session id here. Payment status is set by the webhook OR by
-    // the /api/verify endpoint if you retain the session id client-side.
-    setStatus("paid");
-  }, []);
+    if (type !== "registration" || !regId) return;
+    let cancelled = false;
+    async function loadWithRetry() {
+      // Poll a few times to give the webhook a moment to flip the status
+      for (let attempt = 0; attempt < 6; attempt++) {
+        try {
+          const res = await fetch(`/api/registration/${regId}`);
+          if (!res.ok) throw new Error(String(res.status));
+          const data: RegistrationInfo = await res.json();
+          if (cancelled) return;
+          setReg(data);
+          if (data.confirmationCode) {
+            const url = `${window.location.origin}/#/admin/checkin?code=${encodeURIComponent(data.confirmationCode)}`;
+            const dataUrl = await QRCode.toDataURL(url, { errorCorrectionLevel: "M", margin: 2, width: 512 });
+            if (!cancelled) setQrDataUrl(dataUrl);
+            return;
+          }
+        } catch {}
+        await new Promise(r => setTimeout(r, 1500));
+      }
+    }
+    loadWithRetry();
+    return () => { cancelled = true; };
+  }, [regId, type]);
+
+  const ticketLabel = reg?.ticketType === "ride_along" ? "RIDE-ALONG" : (reg?.ticketType || "").toUpperCase();
 
   return (
     <Shell>
@@ -37,8 +70,36 @@ export default function ThanksPage() {
         <p className="mt-6 text-lg text-foreground/90">
           {type === "merch"
             ? "Your merch order is confirmed. We ship within 5 business days. Watch your inbox."
-            : "Your registration is confirmed. Check your inbox for the receipt and event details. Show up early, tech starts on time."}
+            : "Your registration is confirmed. A copy of your ticket is on the way to your inbox — but the QR below is your ticket. Save it or screenshot it."}
         </p>
+
+        {type === "registration" && (
+          <div className="mt-10">
+            {qrDataUrl && reg?.confirmationCode ? (
+              <div className="mx-auto max-w-sm rounded-2xl bg-white p-6 shadow-lg">
+                <div className="font-mono text-[10px] tracking-widest text-black/60 mb-2">// SHOW AT GATE</div>
+                <img src={qrDataUrl} alt="Your ticket QR code" className="mx-auto w-64 h-64" />
+                <div className="mt-4 font-mono text-lg tracking-widest text-black font-bold">{reg.confirmationCode}</div>
+                {reg && (
+                  <div className="mt-3 text-sm text-black/80">
+                    <div className="font-bold">{reg.firstName} {reg.lastName}</div>
+                    <div className="uppercase tracking-widest text-xs text-black/60 mt-1">{ticketLabel}</div>
+                    {reg.event && (
+                      <div className="mt-2 text-xs text-black/60">
+                        {reg.event.title}{reg.event.subtitle ? ` — ${reg.event.subtitle}` : ""}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="mx-auto max-w-sm rounded-2xl border border-white/10 p-6 text-sm text-foreground/60">
+                <div className="animate-pulse">Generating your ticket...</div>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="mt-10 flex flex-wrap gap-4 justify-center">
           <Link
             href="/sessions"
