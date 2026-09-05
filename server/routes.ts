@@ -6,6 +6,7 @@ import { storage } from "./storage";
 import {
   bookingPayloadSchema,
   merchOrderPayloadSchema,
+  cartCheckoutPayloadSchema,
   insertEventSchema,
   insertProductSchema,
   insertCrewSchema,
@@ -125,18 +126,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(products);
   });
 
-  // Public shipping quote used by the merch modal to preview the total before checkout.
-  app.get("/api/shipping-quote", (req, res) => {
-    const category = String(req.query.category || "");
-    const isFlatEnvelope = category === "stickers" || category === "decals";
+  // Shipping helper. One shipping charge per order.
+  // Cart rule: if EVERY item in the cart is a flat/envelope item (stickers or decals),
+  // charge the envelope rate ($3). Otherwise charge the standard rate ($7) once.
+  // Env overrides: SHIP_FLAT_ENVELOPE_CENTS, SHIP_FLAT_STANDARD_CENTS.
+  function computeShipping(categories: string[]) {
+    const isFlatEnvelope = categories.length > 0 &&
+      categories.every(c => c === "stickers" || c === "decals");
     const shippingCents = isFlatEnvelope
       ? parseInt(process.env.SHIP_FLAT_ENVELOPE_CENTS || "300", 10)
       : parseInt(process.env.SHIP_FLAT_STANDARD_CENTS || "700", 10);
-    res.json({
+    return {
       shippingCents,
       label: isFlatEnvelope ? "USPS First-Class Envelope" : "USPS Ground Advantage",
       etaDays: isFlatEnvelope ? "3-5 business days" : "5-7 business days",
-    });
+      etaMin: isFlatEnvelope ? 3 : 5,
+      etaMax: isFlatEnvelope ? 5 : 7,
+    };
+  }
+
+  // Public shipping quote for the merch modal + cart drawer. Accepts either a single
+  // ?category=X (legacy) or ?categories=a,b,c for a cart of mixed categories.
+  app.get("/api/shipping-quote", (req, res) => {
+    const csv = String(req.query.categories || req.query.category || "");
+    const categories = csv.split(",").map(s => s.trim()).filter(Boolean);
+    const q = computeShipping(categories);
+    res.json({ shippingCents: q.shippingCents, label: q.label, etaDays: q.etaDays });
   });
   app.get("/api/products/:slug", async (req, res) => {
     const p = await storage.getProductBySlug(req.params.slug);
@@ -340,6 +355,149 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid order", errors: err.issues });
       next(err);
     }
+  });
+
+  // ============ MERCH: CART CHECKOUT (multi-item) ============
+  // Creates a parent Order + N OrderItems, then a Stripe Checkout Session with one
+  // line_item per cart entry plus one flat shipping charge for the whole order.
+  app.post("/api/cart-checkout", async (req, res, next) => {
+    try {
+      const payload = cartCheckoutPayloadSchema.parse(req.body);
+
+      // Load and validate every product server-side. Never trust client prices.
+      const productMap = new Map<number, any>();
+      for (const item of payload.items) {
+        if (productMap.has(item.productId)) continue;
+        const p = await storage.getProductById(item.productId);
+        if (!p || !p.inStock) return res.status(400).json({ message: `Product ${item.productId} unavailable` });
+        productMap.set(item.productId, p);
+      }
+
+      // Compute totals + shipping.
+      let subtotalCents = 0;
+      const categories: string[] = [];
+      const itemsResolved = payload.items.map(item => {
+        const p = productMap.get(item.productId)!;
+        subtotalCents += p.priceCents * item.quantity;
+        categories.push(p.category);
+        return { item, product: p };
+      });
+      const ship = computeShipping(categories);
+
+      // Create parent order (multi-item: product_id/size stay null).
+      const order = await storage.createOrder({
+        productId: null,
+        size: null,
+        firstName: payload.firstName,
+        lastName: payload.lastName,
+        email: payload.email,
+        phone: payload.phone || null,
+        shippingAddress: payload.shippingAddress,
+        shippingCity: payload.shippingCity,
+        shippingState: payload.shippingState,
+        shippingZip: payload.shippingZip,
+        paymentStatus: "pending",
+        amountPaidCents: 0,
+        subtotalCents,
+        shippingCents: ship.shippingCents,
+        itemCount: payload.items.reduce((sum, i) => sum + i.quantity, 0),
+      });
+
+      // Snapshot each line item.
+      await storage.createOrderItems(itemsResolved.map(({ item, product }) => ({
+        orderId: order.id,
+        productId: product.id,
+        productName: product.name,
+        productSlug: product.slug,
+        size: item.size || null,
+        quantity: item.quantity,
+        unitPriceCents: product.priceCents,
+        category: product.category,
+      })));
+
+      const baseUrl = process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
+
+      if (STRIPE_MODE === "preview") {
+        const { db } = await import("./storage");
+        const { orders } = await import("@shared/schema");
+        const { eq } = await import("drizzle-orm");
+        const fakeSession = `preview_cart_${order.id}_${Date.now()}`;
+        await db.update(orders)
+          .set({ stripeSessionId: fakeSession, paymentStatus: "preview", amountPaidCents: subtotalCents + ship.shippingCents })
+          .where(eq(orders.id, order.id));
+        return res.json({ orderId: order.id, checkoutUrl: `${baseUrl}/#/thanks?type=merch&id=${order.id}&preview=1`, previewMode: true });
+      }
+
+      // Build Stripe line items with a flat key-value scheme.
+      const params: Record<string, any> = {
+        mode: "payment",
+        "payment_method_types[0]": "card",
+        customer_email: payload.email,
+        "shipping_address_collection[allowed_countries][0]": "US",
+        "shipping_options[0][shipping_rate_data][type]": "fixed_amount",
+        "shipping_options[0][shipping_rate_data][display_name]": ship.label,
+        "shipping_options[0][shipping_rate_data][fixed_amount][amount]": ship.shippingCents,
+        "shipping_options[0][shipping_rate_data][fixed_amount][currency]": "usd",
+        "shipping_options[0][shipping_rate_data][delivery_estimate][minimum][unit]": "business_day",
+        "shipping_options[0][shipping_rate_data][delivery_estimate][minimum][value]": ship.etaMin,
+        "shipping_options[0][shipping_rate_data][delivery_estimate][maximum][unit]": "business_day",
+        "shipping_options[0][shipping_rate_data][delivery_estimate][maximum][value]": ship.etaMax,
+        "metadata[order_id]": order.id,
+        "metadata[kind]": "merch_cart",
+        "metadata[shipping_cents]": ship.shippingCents,
+        "metadata[item_count]": payload.items.reduce((s, i) => s + i.quantity, 0),
+        success_url: `${baseUrl}/#/thanks?type=merch&id=${order.id}`,
+        cancel_url: `${baseUrl}/#/cart?canceled=1`,
+      };
+      itemsResolved.forEach(({ item, product }, idx) => {
+        const sizeSuffix = item.size ? ` (${item.size})` : "";
+        params[`line_items[${idx}][price_data][currency]`] = "usd";
+        params[`line_items[${idx}][price_data][unit_amount]`] = product.priceCents;
+        params[`line_items[${idx}][price_data][product_data][name]`] = `${product.name}${sizeSuffix}`;
+        params[`line_items[${idx}][price_data][product_data][description]`] = product.description.substring(0, 200);
+        params[`line_items[${idx}][quantity]`] = item.quantity;
+      });
+
+      const session = await stripeCall("/checkout/sessions", params);
+
+      const { db } = await import("./storage");
+      const { orders } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      await db.update(orders).set({ stripeSessionId: session.id }).where(eq(orders.id, order.id));
+
+      res.json({ orderId: order.id, checkoutUrl: session.url });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid cart", errors: err.issues });
+      next(err);
+    }
+  });
+
+  // Public order lookup for the thanks page: returns the order + its line items.
+  app.get("/api/orders/:id", async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid order id" });
+    const order = await storage.getOrderById(id);
+    if (!order) return res.status(404).json({ message: "Order not found" });
+    const items = await storage.listOrderItems(id);
+    // Redact PII except first name + first initial. Everything else is safe totals/items.
+    res.json({
+      id: order.id,
+      firstName: order.firstName,
+      lastNameInitial: order.lastName ? order.lastName.charAt(0) : "",
+      subtotalCents: order.subtotalCents,
+      shippingCents: order.shippingCents,
+      amountPaidCents: order.amountPaidCents,
+      itemCount: order.itemCount,
+      paymentStatus: order.paymentStatus,
+      createdAt: order.createdAt,
+      // Legacy single-item fallback (before cart)
+      legacyProductId: order.productId,
+      legacySize: order.size,
+      items: items.map(i => ({
+        productName: i.productName, productSlug: i.productSlug, size: i.size,
+        quantity: i.quantity, unitPriceCents: i.unitPriceCents,
+      })),
+    });
   });
 
   // ============ STRIPE WEBHOOK ============
@@ -551,7 +709,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(await storage.listRegistrations(eventId));
   });
   app.get("/api/admin/orders", requireAdmin, async (_req, res) => {
-    res.json(await storage.listOrders());
+    const orders = await storage.listOrders();
+    // Enrich each order with its line items so the admin table can render multi-item orders.
+    const enriched = await Promise.all(orders.map(async (o) => {
+      const items = await storage.listOrderItems(o.id);
+      return { ...o, items };
+    }));
+    res.json(enriched);
   });
   app.get("/api/admin/export/registrations.csv", requireAdmin, async (req, res) => {
     const eventId = req.query.eventId ? Number(req.query.eventId) : undefined;

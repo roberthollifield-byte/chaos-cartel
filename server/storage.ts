@@ -5,12 +5,12 @@
 // deploys.
 // ============================================================
 import {
-  users, events, registrations, products, orders, crewMembers,
+  users, events, registrations, products, orders, orderItems, crewMembers,
   type User, type InsertUser,
   type Event, type InsertEvent, type EventAvailability,
   type Registration, type InsertRegistration,
   type Product, type InsertProduct,
-  type Order,
+  type Order, type OrderItem, type InsertOrderItem,
   type CrewMember, type InsertCrew,
 } from '@shared/schema';
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -134,6 +134,24 @@ export async function bootstrapSchema() {
       created_at BIGINT NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_orders_stripe ON orders(stripe_session_id);
+    -- Multi-item cart support: relax legacy NOT NULL constraint on product_id
+    -- and add subtotal/shipping/item_count columns.
+    ALTER TABLE orders ALTER COLUMN product_id DROP NOT NULL;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS subtotal_cents INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_cents INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS item_count INTEGER NOT NULL DEFAULT 1;
+    CREATE TABLE IF NOT EXISTS order_items (
+      id SERIAL PRIMARY KEY,
+      order_id INTEGER NOT NULL,
+      product_id INTEGER NOT NULL,
+      product_name TEXT NOT NULL,
+      product_slug TEXT NOT NULL,
+      size TEXT,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      unit_price_cents INTEGER NOT NULL,
+      category TEXT NOT NULL DEFAULT 'apparel'
+    );
+    CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
     CREATE TABLE IF NOT EXISTS crew_members (
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
@@ -175,6 +193,9 @@ export interface IStorage {
 
   // Merch orders
   createOrder(data: Partial<Order>): Promise<Order>;
+  getOrderById(id: number): Promise<Order | undefined>;
+  createOrderItems(items: InsertOrderItem[]): Promise<OrderItem[]>;
+  listOrderItems(orderId: number): Promise<OrderItem[]>;
   updateOrderBySession(sessionId: string, patch: Partial<Order>): Promise<Order | undefined>;
   listOrders(): Promise<Order[]>;
 
@@ -294,6 +315,16 @@ export class DatabaseStorage implements IStorage {
     return first(await db.update(orders).set(patch).where(eq(orders.stripeSessionId, sessionId)).returning());
   }
   async listOrders() { return db.select().from(orders).orderBy(desc(orders.createdAt)); }
+  async getOrderById(id: number): Promise<Order | undefined> {
+    return first(await db.select().from(orders).where(eq(orders.id, id)));
+  }
+  async createOrderItems(items: InsertOrderItem[]): Promise<OrderItem[]> {
+    if (items.length === 0) return [];
+    return await db.insert(orderItems).values(items).returning();
+  }
+  async listOrderItems(orderId: number): Promise<OrderItem[]> {
+    return await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+  }
 
   async listCrew() { return db.select().from(crewMembers).orderBy(crewMembers.displayOrder); }
   async createCrewMember(data: InsertCrew) {

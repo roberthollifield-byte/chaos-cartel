@@ -347,28 +347,51 @@ function RegistrationsPanel() {
 // ORDERS
 // -----------------------------------------------------------------------------
 
+interface AdminOrderItem { id: number; productName: string; size: string | null; quantity: number; unitPriceCents: number; }
+interface AdminOrder extends Order { items?: AdminOrderItem[]; productName?: string; }
+
 function OrdersPanel() {
-  const { data, isLoading } = useQuery<(Order & { productName?: string })[]>({ queryKey: ["/api/admin/orders"] });
+  const { data, isLoading } = useQuery<AdminOrder[]>({ queryKey: ["/api/admin/orders"] });
   return (
     <div className="overflow-x-auto rounded-xl border border-cc-purple/40">
       <table className="w-full text-sm">
         <thead className="bg-card">
           <tr className="text-left text-xs font-mono tracking-widest text-cc-cyan">
-            <th className="p-3">PRODUCT</th><th className="p-3">SIZE</th><th className="p-3">CUSTOMER</th><th className="p-3">SHIP TO</th><th className="p-3">PAID</th>
+            <th className="p-3">ORDER</th><th className="p-3">ITEMS</th><th className="p-3">CUSTOMER</th><th className="p-3">SHIP TO</th><th className="p-3">TOTALS</th><th className="p-3">STATUS</th>
           </tr>
         </thead>
         <tbody>
-          {isLoading && <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Loading…</td></tr>}
-          {(data || []).map(o => (
-            <tr key={o.id} className="border-t border-cc-purple/30" data-testid={`order-row-${o.id}`}>
-              <td className="p-3">{o.productName || `#${o.productId}`}</td>
-              <td className="p-3">{o.size || "—"}</td>
-              <td className="p-3">{o.firstName} {o.lastName}<br/><span className="text-muted-foreground text-xs">{o.email}</span></td>
-              <td className="p-3 text-muted-foreground text-xs">{o.shippingAddress}, {o.shippingCity}, {o.shippingState} {o.shippingZip}</td>
-              <td className="p-3"><span className={`px-2 py-0.5 rounded text-xs ${o.paymentStatus==='paid' ? 'bg-cc-lime/20 text-cc-lime' : 'bg-muted text-muted-foreground'}`}>{o.paymentStatus}</span></td>
-            </tr>
-          ))}
-          {!isLoading && (data || []).length === 0 && <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">No orders yet.</td></tr>}
+          {isLoading && <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">Loading…</td></tr>}
+          {(data || []).map(o => {
+            // Multi-item orders have items[]; legacy single-item orders have productId/size/productName on the row.
+            const lines = (o.items && o.items.length > 0)
+              ? o.items
+              : [{ id: 0, productName: o.productName || `#${o.productId}`, size: o.size, quantity: 1, unitPriceCents: o.amountPaidCents - (o.shippingCents || 0) }];
+            return (
+              <tr key={o.id} className="border-t border-cc-purple/30 align-top" data-testid={`order-row-${o.id}`}>
+                <td className="p-3 font-mono text-cc-lime">#{o.id}</td>
+                <td className="p-3">
+                  <ul className="space-y-1">
+                    {lines.map((it, idx) => (
+                      <li key={idx} className="text-xs">
+                        <span className="text-foreground">{it.quantity}× {it.productName}</span>
+                        {it.size && <span className="text-cc-cyan"> · {it.size}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </td>
+                <td className="p-3">{o.firstName} {o.lastName}<br/><span className="text-muted-foreground text-xs">{o.email}</span></td>
+                <td className="p-3 text-muted-foreground text-xs">{o.shippingAddress}, {o.shippingCity}, {o.shippingState} {o.shippingZip}</td>
+                <td className="p-3 text-xs">
+                  <div className="text-muted-foreground">Sub ${(o.subtotalCents/100).toFixed(2)}</div>
+                  <div className="text-muted-foreground">Ship ${(o.shippingCents/100).toFixed(2)}</div>
+                  <div className="font-display font-bold text-cc-lime mt-1">${(o.amountPaidCents/100).toFixed(2)}</div>
+                </td>
+                <td className="p-3"><span className={`px-2 py-0.5 rounded text-xs ${o.paymentStatus==='paid' ? 'bg-cc-lime/20 text-cc-lime' : 'bg-muted text-muted-foreground'}`}>{o.paymentStatus}</span></td>
+              </tr>
+            );
+          })}
+          {!isLoading && (data || []).length === 0 && <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">No orders yet.</td></tr>}
         </tbody>
       </table>
     </div>

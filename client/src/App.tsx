@@ -19,6 +19,7 @@ import SessionDetailPage from "@/pages/session-detail";
 import RulesPage from "@/pages/rules";
 import CrewPage from "@/pages/crew";
 import MerchPage from "@/pages/merch";
+import CartPage from "@/pages/cart";
 import ThanksPage from "@/pages/thanks";
 import AdminPage from "@/pages/admin";
 import AdminCheckinPage from "@/pages/admin-checkin";
@@ -32,6 +33,7 @@ function AppRouter() {
       <Route path="/rules" component={RulesPage} />
       <Route path="/crew" component={CrewPage} />
       <Route path="/merch" component={MerchPage} />
+      <Route path="/cart" component={CartPage} />
       <Route path="/thanks" component={ThanksPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/admin/checkin" component={AdminCheckinPage} />

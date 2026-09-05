@@ -1,8 +1,21 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
-import { CheckCircle2, Zap } from "lucide-react";
+import { CheckCircle2, Zap, Package } from "lucide-react";
 import QRCode from "qrcode";
 import { Shell } from "@/components/brand/Shell";
+import { clearCart } from "@/lib/cart";
+
+interface OrderInfo {
+  id: number;
+  firstName: string;
+  lastNameInitial: string;
+  subtotalCents: number;
+  shippingCents: number;
+  amountPaidCents: number;
+  itemCount: number;
+  paymentStatus: string;
+  items: Array<{ productName: string; productSlug: string; size: string | null; quantity: number; unitPriceCents: number }>;
+}
 
 interface RegistrationInfo {
   id: number;
@@ -24,6 +37,33 @@ export default function ThanksPage() {
   const regId = params.get("id");
   const [reg, setReg] = useState<RegistrationInfo | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [order, setOrder] = useState<OrderInfo | null>(null);
+
+  // On a successful merch return, clear the local cart once.
+  useEffect(() => {
+    if (type === "merch" && regId) clearCart();
+  }, [type, regId]);
+
+  // Load merch order details (line items + totals) for the receipt view.
+  useEffect(() => {
+    if (type !== "merch" || !regId) return;
+    let cancelled = false;
+    async function load() {
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          const res = await fetch(`/api/orders/${regId}`);
+          if (res.ok) {
+            const data: OrderInfo = await res.json();
+            if (!cancelled) setOrder(data);
+            return;
+          }
+        } catch {}
+        await new Promise(r => setTimeout(r, 1200));
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [regId, type]);
 
   useEffect(() => {
     if (type !== "registration" || !regId) return;
@@ -72,6 +112,38 @@ export default function ThanksPage() {
             ? "Your merch order is confirmed. We ship within 5 business days. Watch your inbox."
             : "Your registration is confirmed. A copy of your ticket is on the way to your inbox — but the QR below is your ticket. Save it or screenshot it."}
         </p>
+
+        {type === "merch" && order && order.items.length > 0 && (
+          <div className="mt-10 mx-auto max-w-md text-left rounded-2xl border-2 border-cc-lime/50 bg-card/80 p-5 glow-lime">
+            <div className="flex items-center gap-2 mb-4">
+              <Package size={18} className="text-cc-lime"/>
+              <p className="font-display font-extrabold text-lg italic text-cc-lime">ORDER #{order.id}</p>
+            </div>
+            <ul className="divide-y divide-cc-purple/30">
+              {order.items.map((it, idx) => (
+                <li key={idx} className="py-2 flex justify-between text-sm">
+                  <span className="text-foreground/90">
+                    {it.quantity}× {it.productName}
+                    {it.size ? <span className="text-cc-cyan"> · {it.size}</span> : null}
+                  </span>
+                  <span className="font-mono text-foreground/80">${(it.unitPriceCents * it.quantity / 100).toFixed(2)}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-4 pt-3 border-t border-cc-purple/30 space-y-1 text-sm">
+              <div className="flex justify-between text-foreground/70">
+                <span>Subtotal</span><span>${(order.subtotalCents/100).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-foreground/70">
+                <span>Shipping</span><span>${(order.shippingCents/100).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between pt-2 mt-1 border-t border-cc-purple/30">
+                <span className="font-display font-bold">TOTAL PAID</span>
+                <span className="font-display font-extrabold text-cc-lime">${(order.amountPaidCents/100).toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {type === "registration" && (
           <div className="mt-10">

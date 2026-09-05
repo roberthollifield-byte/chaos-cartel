@@ -154,9 +154,12 @@ export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type Product = typeof products.$inferSelect;
 
 // ============ MERCH ORDERS ============
+// Historical single-item orders kept product_id + size on the parent row.
+// Multi-item orders (cart-based) use the order_items child table below.
+// For those, product_id/size on the parent are null and item detail lives in order_items.
 export const orders = pgTable("orders", {
   id: serial("id").primaryKey(),
-  productId: integer("product_id").notNull(),
+  productId: integer("product_id"),
   size: text("size"),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
@@ -169,10 +172,26 @@ export const orders = pgTable("orders", {
   stripeSessionId: text("stripe_session_id"),
   stripePaymentIntentId: text("stripe_payment_intent_id"),
   amountPaidCents: integer("amount_paid_cents").notNull().default(0),
+  subtotalCents: integer("subtotal_cents").notNull().default(0),
+  shippingCents: integer("shipping_cents").notNull().default(0),
+  itemCount: integer("item_count").notNull().default(1),
   paymentStatus: text("payment_status").notNull().default("pending"),
   createdAt: bigint("created_at", { mode: "number" }).notNull().default(0),
 });
 
+export const orderItems = pgTable("order_items", {
+  id: serial("id").primaryKey(),
+  orderId: integer("order_id").notNull(),
+  productId: integer("product_id").notNull(),
+  productName: text("product_name").notNull(),
+  productSlug: text("product_slug").notNull(),
+  size: text("size"),
+  quantity: integer("quantity").notNull().default(1),
+  unitPriceCents: integer("unit_price_cents").notNull(),
+  category: text("category").notNull().default("apparel"),
+});
+
+// Legacy single-item payload (still supported for backward compatibility).
 export const merchOrderPayloadSchema = z.object({
   productId: z.number().int().positive(),
   size: z.string().optional(),
@@ -186,7 +205,27 @@ export const merchOrderPayloadSchema = z.object({
   shippingZip: z.string().min(3),
 });
 export type MerchOrderPayload = z.infer<typeof merchOrderPayloadSchema>;
+
+// New multi-item cart checkout payload.
+export const cartCheckoutPayloadSchema = z.object({
+  items: z.array(z.object({
+    productId: z.number().int().positive(),
+    size: z.string().optional().nullable(),
+    quantity: z.number().int().positive().max(20),
+  })).min(1).max(30),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  email: z.string().email(),
+  phone: z.string().optional(),
+  shippingAddress: z.string().min(3),
+  shippingCity: z.string().min(1),
+  shippingState: z.string().min(2),
+  shippingZip: z.string().min(3),
+});
+export type CartCheckoutPayload = z.infer<typeof cartCheckoutPayloadSchema>;
 export type Order = typeof orders.$inferSelect;
+export type OrderItem = typeof orderItems.$inferSelect;
+export type InsertOrderItem = typeof orderItems.$inferInsert;
 
 // ============ CREW ============
 export const crewMembers = pgTable("crew_members", {

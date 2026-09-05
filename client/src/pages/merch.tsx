@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { ShoppingBag, X, Truck } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { ShoppingBag, X, Truck, Plus, Minus, Check } from "lucide-react";
+import { useLocation } from "wouter";
 import { Shell } from "@/components/brand/Shell";
-import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useCart } from "@/lib/cart";
 import type { Product } from "@shared/schema";
-
-interface ShippingQuote { shippingCents: number; label: string; etaDays: string; }
 
 export default function MerchPage() {
   const { data: products, isLoading } = useQuery<Product[]>({ queryKey: ["/api/products"] });
@@ -21,7 +20,7 @@ export default function MerchPage() {
         </h1>
         <p className="mt-6 max-w-2xl text-lg text-foreground/90">Wear the crew. Ship anywhere in the US.</p>
         <p className="mt-3 inline-flex items-center gap-2 rounded-md border border-cc-cyan/40 bg-cc-cyan/5 px-3 py-1.5 text-xs font-mono tracking-widest text-cc-cyan">
-          <Truck size={14}/> FLAT $7 SHIPPING · STICKERS &amp; DECALS $3
+          <Truck size={14}/> FLAT $7 SHIPPING · STICKERS &amp; DECALS $3 · ONE CHARGE PER ORDER
         </p>
 
         <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -33,7 +32,7 @@ export default function MerchPage() {
           ))}
         </div>
       </section>
-      {selected && <BuyModal product={selected} onClose={() => setSelected(null)} />}
+      {selected && <AddToCartModal product={selected} onClose={() => setSelected(null)} />}
     </Shell>
   );
 }
@@ -61,119 +60,140 @@ function ProductCard({ product, index, onBuy }: { product: Product; index: numbe
       <div className="mt-5 flex items-end justify-between gap-3 pt-4 border-t border-cc-purple/30">
         <div className={`font-display font-extrabold text-3xl italic text-${accent}`}>${(product.priceCents/100).toFixed(0)}</div>
         <button onClick={onBuy} className="px-5 py-2.5 rounded-md btn-neon-lime text-sm" data-testid={`button-buy-${product.slug}`}>
-          BUY →
+          ADD TO CART →
         </button>
       </div>
     </div>
   );
 }
 
-function BuyModal({ product, onClose }: { product: Product; onClose: () => void }) {
+function AddToCartModal({ product, onClose }: { product: Product; onClose: () => void }) {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
+  const { addToCart, itemCount } = useCart();
   const sizes: string[] = product.sizes ? JSON.parse(product.sizes) : [];
-  const [form, setForm] = useState({
-    size: sizes[0] || "",
-    firstName: "", lastName: "", email: "", phone: "",
-    shippingAddress: "", shippingCity: "", shippingState: "NC", shippingZip: "",
-  });
+  const [size, setSize] = useState<string>(sizes[0] || "");
+  const [quantity, setQuantity] = useState(1);
+  const [added, setAdded] = useState(false);
 
-  const { data: quote } = useQuery<ShippingQuote>({
-    queryKey: [`/api/shipping-quote?category=${product.category}`],
-  });
-
-  const mutation = useMutation({
-    mutationFn: async (payload: any) => (await apiRequest("POST", "/api/merch-orders", payload)).json(),
-    onSuccess: (data) => {
-      if (data.checkoutUrl) window.location.href = data.checkoutUrl;
-    },
-    onError: (err: any) => toast({ title: "Order failed", description: err.message, variant: "destructive" }),
-  });
-
-  const totalCents = product.priceCents + (quote?.shippingCents || 0);
+  function handleAdd(then?: "keep-shopping" | "view-cart") {
+    addToCart({
+      productId: product.id,
+      productSlug: product.slug,
+      productName: product.name,
+      imageUrl: product.imageUrl,
+      category: product.category,
+      size: sizes.length > 0 ? size : null,
+      quantity,
+      unitPriceCents: product.priceCents,
+    });
+    setAdded(true);
+    toast({
+      title: "Added to cart",
+      description: `${quantity} × ${product.name}${sizes.length > 0 ? ` (${size})` : ""}`,
+    });
+    if (then === "view-cart") {
+      onClose();
+      navigate("/cart");
+    } else if (then === "keep-shopping") {
+      onClose();
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm grid place-items-center p-4 overflow-y-auto" onClick={onClose}>
-      <div className="w-full max-w-lg bg-card border-2 border-cc-lime/60 rounded-2xl p-6 glow-lime my-8" onClick={e => e.stopPropagation()}>
+      <div className="w-full max-w-md bg-card border-2 border-cc-lime/60 rounded-2xl p-6 glow-lime my-8" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between mb-5">
-          <div>
-            <div className="text-xs font-mono tracking-widest text-cc-cyan mb-1">ORDER</div>
-            <h3 className="font-display font-extrabold text-2xl italic">{product.name}</h3>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-mono tracking-widest text-cc-cyan mb-1">ADD TO CART</div>
+            <h3 className="font-display font-extrabold text-2xl italic truncate">{product.name}</h3>
             <div className="mt-1 font-display font-extrabold text-2xl italic text-cc-lime">${(product.priceCents/100).toFixed(0)}</div>
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-cc-lime" data-testid="button-close-modal"><X /></button>
+          <button onClick={onClose} className="text-muted-foreground hover:text-cc-lime shrink-0" data-testid="button-close-modal"><X /></button>
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); mutation.mutate({ productId: product.id, ...form }); }} className="space-y-4">
-          {sizes.length > 0 && (
-            <div>
-              <label className="block text-xs font-mono tracking-widest text-cc-cyan mb-1.5">SIZE</label>
-              <div className="flex flex-wrap gap-2">
-                {sizes.map(s => (
-                  <button
-                    type="button"
-                    key={s}
-                    onClick={()=>setForm(f => ({...f, size:s}))}
-                    className={`px-4 py-2 rounded-md border-2 text-sm font-display font-bold ${form.size===s ? "border-cc-lime bg-cc-lime text-black" : "border-cc-purple/40 hover:border-cc-lime/50"}`}
-                    data-testid={`size-${s}`}
-                  >{s}</button>
-                ))}
-              </div>
-            </div>
-          )}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <MerchInput label="First name" value={form.firstName} onChange={v=>setForm(f=>({...f,firstName:v}))} data-testid="input-firstName" />
-            <MerchInput label="Last name" value={form.lastName} onChange={v=>setForm(f=>({...f,lastName:v}))} data-testid="input-lastName" />
-            <MerchInput label="Email" type="email" value={form.email} onChange={v=>setForm(f=>({...f,email:v}))} data-testid="input-email" />
-            <MerchInput label="Phone (optional)" value={form.phone} onChange={v=>setForm(f=>({...f,phone:v}))} />
-          </div>
-          <MerchInput label="Shipping address" value={form.shippingAddress} onChange={v=>setForm(f=>({...f,shippingAddress:v}))} data-testid="input-shippingAddress" />
-          <div className="grid gap-3 sm:grid-cols-3">
-            <MerchInput label="City" value={form.shippingCity} onChange={v=>setForm(f=>({...f,shippingCity:v}))} data-testid="input-city" />
-            <MerchInput label="State" value={form.shippingState} onChange={v=>setForm(f=>({...f,shippingState:v}))} data-testid="input-state" />
-            <MerchInput label="ZIP" value={form.shippingZip} onChange={v=>setForm(f=>({...f,shippingZip:v}))} data-testid="input-zip" />
-          </div>
-          <div className="rounded-lg border border-cc-purple/40 bg-black/40 p-3 space-y-1.5">
-            <div className="flex justify-between text-sm text-foreground/80">
-              <span>Item</span>
-              <span>${(product.priceCents/100).toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-sm text-foreground/80">
-              <span className="inline-flex items-center gap-1.5"><Truck size={14} className="text-cc-cyan"/> Shipping (flat rate)</span>
-              <span>{quote ? `$${(quote.shippingCents/100).toFixed(2)}` : "—"}</span>
-            </div>
-            {quote && (
-              <div className="text-[10px] font-mono tracking-widest text-foreground/50 pl-5">{quote.label.toUpperCase()} · {quote.etaDays.toUpperCase()}</div>
-            )}
-            <div className="flex justify-between pt-2 mt-1 border-t border-cc-purple/40">
-              <span className="font-display font-bold text-lg">TOTAL</span>
-              <span className="font-display font-extrabold text-lg text-cc-lime">${(totalCents/100).toFixed(2)}</span>
-            </div>
-          </div>
-          <button
-            type="submit"
-            disabled={mutation.isPending || !quote}
-            className="w-full px-6 py-4 rounded-md btn-neon-lime text-base disabled:opacity-60"
-            data-testid="button-checkout"
-          >
-            {mutation.isPending ? "REDIRECTING…" : `CHECKOUT — $${(totalCents/100).toFixed(2)} →`}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
 
-function MerchInput({ label, value, onChange, type="text", ...rest }: any) {
-  return (
-    <div>
-      <label className="block text-xs font-mono tracking-widest text-cc-cyan mb-1.5">{label.toUpperCase()}</label>
-      <input
-        type={type}
-        value={value}
-        onChange={e=>onChange(e.target.value)}
-        className="w-full px-3 py-2.5 rounded-md bg-background border-2 border-cc-purple/40 text-foreground focus:border-cc-lime focus:outline-none transition-colors"
-        required
-        {...rest}
-      />
+        {product.imageUrl && (
+          <div className="mb-5 aspect-square rounded-xl border border-cc-purple/40 bg-black/40 overflow-hidden">
+            <img src={product.imageUrl} alt={product.name} className="w-full h-full object-contain p-2"/>
+          </div>
+        )}
+
+        <p className="text-sm text-foreground/80 mb-5">{product.description}</p>
+
+        {sizes.length > 0 && (
+          <div className="mb-5">
+            <label className="block text-xs font-mono tracking-widest text-cc-cyan mb-1.5">SIZE</label>
+            <div className="flex flex-wrap gap-2">
+              {sizes.map(s => (
+                <button
+                  type="button"
+                  key={s}
+                  onClick={() => setSize(s)}
+                  className={`px-4 py-2 rounded-md border-2 text-sm font-display font-bold transition ${
+                    size === s ? "border-cc-lime bg-cc-lime text-black" : "border-cc-purple/40 hover:border-cc-lime/50"
+                  }`}
+                  data-testid={`size-${s}`}
+                >{s}</button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mb-6">
+          <label className="block text-xs font-mono tracking-widest text-cc-cyan mb-1.5">QUANTITY</label>
+          <div className="inline-flex items-center rounded-md border-2 border-cc-purple/40">
+            <button
+              onClick={() => setQuantity(q => Math.max(1, q - 1))}
+              className="px-3 py-2 text-cc-cyan hover:bg-cc-cyan/10"
+              aria-label="Decrease"
+              type="button"
+            ><Minus size={16}/></button>
+            <span className="px-5 py-2 font-display font-bold min-w-[3rem] text-center">{quantity}</span>
+            <button
+              onClick={() => setQuantity(q => Math.min(20, q + 1))}
+              className="px-3 py-2 text-cc-cyan hover:bg-cc-cyan/10"
+              aria-label="Increase"
+              type="button"
+            ><Plus size={16}/></button>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-cc-purple/40 bg-black/40 p-3 mb-5">
+          <div className="flex justify-between">
+            <span className="font-display font-bold text-base">LINE TOTAL</span>
+            <span className="font-display font-extrabold text-xl text-cc-lime">
+              ${(product.priceCents * quantity / 100).toFixed(2)}
+            </span>
+          </div>
+          <p className="mt-1 text-[10px] font-mono tracking-widest text-foreground/50">
+            SHIPPING CHARGED ONCE AT CHECKOUT
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => handleAdd("keep-shopping")}
+            className="px-4 py-3 rounded-md border-2 border-cc-lime/60 text-cc-lime font-display font-bold text-sm hover:bg-cc-lime/10 inline-flex items-center justify-center gap-2"
+            type="button"
+            data-testid="button-add-keep-shopping"
+          >
+            {added ? <Check size={14}/> : null} ADD &amp; KEEP SHOPPING
+          </button>
+          <button
+            onClick={() => handleAdd("view-cart")}
+            className="px-4 py-3 rounded-md btn-neon-lime text-sm inline-flex items-center justify-center gap-2"
+            type="button"
+            data-testid="button-add-view-cart"
+          >
+            ADD &amp; VIEW CART →
+          </button>
+        </div>
+        {itemCount > 0 && (
+          <p className="mt-3 text-center text-[10px] font-mono tracking-widest text-foreground/50">
+            {itemCount} ITEM{itemCount === 1 ? "" : "S"} ALREADY IN CART
+          </p>
+        )}
+      </div>
     </div>
   );
 }

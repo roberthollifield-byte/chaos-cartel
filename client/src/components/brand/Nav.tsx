@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Menu, X } from "lucide-react";
+import { Menu, X, ShoppingBag } from "lucide-react";
 import { Logo } from "./Logo";
+import { useCart } from "@/lib/cart";
 
 const links = [
   { href: "/sessions", label: "SESSIONS" },
@@ -13,6 +14,7 @@ const links = [
 export function Nav() {
   const [open, setOpen] = useState(false);
   const [location] = useLocation();
+  const { itemCount } = useCart();
 
   return (
     <header className="sticky top-0 z-40 border-b border-cc-purple/40 backdrop-blur-md bg-background/85">
@@ -37,7 +39,8 @@ export function Nav() {
             ))}
           </nav>
 
-          <div className="hidden md:block">
+          <div className="hidden md:flex items-center gap-3">
+            <CartIcon count={itemCount} />
             <Link
               href="/sessions"
               data-testid="link-register-now"
@@ -47,14 +50,17 @@ export function Nav() {
             </Link>
           </div>
 
-          <button
-            className="md:hidden text-cc-lime"
-            aria-label="Open menu"
-            onClick={() => setOpen(!open)}
-            data-testid="button-menu-toggle"
-          >
-            {open ? <X size={28} /> : <Menu size={28} />}
-          </button>
+          <div className="md:hidden flex items-center gap-2">
+            <CartIcon count={itemCount} />
+            <button
+              className="text-cc-lime"
+              aria-label="Open menu"
+              onClick={() => setOpen(!open)}
+              data-testid="button-menu-toggle"
+            >
+              {open ? <X size={28} /> : <Menu size={28} />}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -84,5 +90,26 @@ export function Nav() {
         </nav>
       )}
     </header>
+  );
+}
+
+function CartIcon({ count }: { count: number }) {
+  return (
+    <Link
+      href="/cart"
+      data-testid="link-cart"
+      aria-label={`Cart (${count} item${count === 1 ? "" : "s"})`}
+      className="relative inline-flex items-center justify-center w-11 h-11 rounded-md border border-cc-purple/50 text-foreground hover:text-cc-lime hover:border-cc-lime transition-colors"
+    >
+      <ShoppingBag size={20} />
+      {count > 0 && (
+        <span
+          className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 grid place-items-center rounded-full bg-cc-lime text-black text-[11px] font-display font-extrabold border-2 border-background"
+          data-testid="cart-count"
+        >
+          {count > 99 ? "99+" : count}
+        </span>
+      )}
+    </Link>
   );
 }
