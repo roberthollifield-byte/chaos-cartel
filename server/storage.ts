@@ -602,8 +602,15 @@ async function applyCrewFixups() {
       role: "Driver",
       car: "RHD S13 Silvia — Turbo LS3",
       bio: "Driver.",
+      imageUrl: "/crew/jd.jpg",
     }).where(eq(crewMembers.id, tbdDriver.id));
     console.log("[config] Updated Driver TBD to Josh Dalton");
+  }
+  // 4. Backfill JD's photo if his row exists without one (in case he was already upgraded).
+  const jd = all.find(c => c.name === "Josh Dalton (JD)" && !c.imageUrl);
+  if (jd) {
+    await db.update(crewMembers).set({ imageUrl: "/crew/jd.jpg" }).where(eq(crewMembers.id, jd.id));
+    console.log("[config] Backfilled JD's photo");
   }
 }
 
