@@ -192,6 +192,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       try {
         const session = await stripeCall("/checkout/sessions", {
           mode: "payment",
+          "payment_method_types[0]": "card",
           "line_items[0][price_data][currency]": "usd",
           "line_items[0][price_data][unit_amount]": priceCents,
           "line_items[0][price_data][product_data][name]": itemName,
@@ -266,6 +267,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const session = await stripeCall("/checkout/sessions", {
         mode: "payment",
+        "payment_method_types[0]": "card",
         "line_items[0][price_data][currency]": "usd",
         "line_items[0][price_data][unit_amount]": product.priceCents,
         "line_items[0][price_data][product_data][name]": `${product.name}${sizeSuffix}`,
