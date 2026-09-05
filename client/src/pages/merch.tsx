@@ -43,7 +43,7 @@ function ProductCard({ product, index, onBuy }: { product: Product; index: numbe
     >
       <div className={`aspect-square rounded-xl bg-gradient-to-br from-${accent}/25 via-cc-purple/25 to-cc-magenta/15 grid place-items-center mb-5 border border-${accent}/40 relative overflow-hidden`}>
         {product.imageUrl ? (
-          <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+          <img src={product.imageUrl} alt={product.name} className="w-full h-full object-contain p-2" />
         ) : (
           <ShoppingBag className={`text-${accent}`} size={80} strokeWidth={1.4} />
         )}

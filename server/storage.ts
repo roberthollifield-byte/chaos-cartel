@@ -404,12 +404,30 @@ async function applyEventConfig() {
   console.log("[config] Events synced (2 published rounds, invite-only)");
 }
 
+// ============ PRODUCT IMAGE BACKFILL ============
+// Idempotent: sets imageUrl on known products that are missing an image.
+async function applyProductImages() {
+  const map: Record<string, string> = {
+    "chaos-cartel-tee-black": "/merch/tee.jpg",
+    "smoke-hoodie": "/merch/hoodie.png",
+    "chaos-cartel-sticker-pack": "/merch/stickers.png",
+  };
+  for (const [slug, url] of Object.entries(map)) {
+    await db.update(products)
+      .set({ imageUrl: url })
+      .where(and(eq(products.slug, slug), sql`(image_url IS NULL OR image_url = '')`));
+  }
+  console.log("[config] Product images backfilled");
+}
+
 // ============ SEED PLACEHOLDER DATA ============
 // Runs once on empty DB. Safe to leave enabled — no-op if events already exist.
 export async function seed() {
   await bootstrapSchema();
   // Apply event config on every boot (idempotent upsert)
   await applyEventConfig();
+  // Backfill product images if missing (idempotent)
+  await applyProductImages();
   const existing = await db.select().from(events);
   // Existing events (which include the two we just upserted) means the initial
   // seed of products/crew/admin already ran on a prior boot.
@@ -476,7 +494,7 @@ export async function seed() {
     name: "Chaos Cartel Tee — Black",
     description: "Heavyweight 100% cotton tee. Big neon Chaos Cartel wordmark on the front, small crew mark on the back.",
     priceCents: 3500,
-    imageUrl: null,
+    imageUrl: "/merch/tee.jpg",
     category: "apparel",
     sizes: JSON.stringify(["S", "M", "L", "XL", "XXL"]),
     inStock: true,
@@ -486,7 +504,7 @@ export async function seed() {
     name: "Tire Smoke Hoodie",
     description: "Midweight fleece hoodie with a full-back print of the AE86 you know from the poster.",
     priceCents: 6500,
-    imageUrl: null,
+    imageUrl: "/merch/hoodie.png",
     category: "apparel",
     sizes: JSON.stringify(["S", "M", "L", "XL", "XXL"]),
     inStock: true,
@@ -496,7 +514,7 @@ export async function seed() {
     name: "Sticker Pack — 5 Pack",
     description: "Five 3\" die-cut vinyl stickers. Weatherproof. Slap them on your helmet, cage, or toolbox.",
     priceCents: 1000,
-    imageUrl: null,
+    imageUrl: "/merch/stickers.png",
     category: "stickers",
     sizes: null,
     inStock: true,
