@@ -124,6 +124,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const products = await storage.listProducts();
     res.json(products);
   });
+
+  // Public shipping quote used by the merch modal to preview the total before checkout.
+  app.get("/api/shipping-quote", (req, res) => {
+    const category = String(req.query.category || "");
+    const isFlatEnvelope = category === "stickers" || category === "decals";
+    const shippingCents = isFlatEnvelope
+      ? parseInt(process.env.SHIP_FLAT_ENVELOPE_CENTS || "300", 10)
+      : parseInt(process.env.SHIP_FLAT_STANDARD_CENTS || "700", 10);
+    res.json({
+      shippingCents,
+      label: isFlatEnvelope ? "USPS First-Class Envelope" : "USPS Ground Advantage",
+      etaDays: isFlatEnvelope ? "3-5 business days" : "5-7 business days",
+    });
+  });
   app.get("/api/products/:slug", async (req, res) => {
     const p = await storage.getProductBySlug(req.params.slug);
     if (!p) return res.status(404).json({ message: "Product not found" });
@@ -271,13 +285,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const baseUrl = process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
       const sizeSuffix = payload.size ? ` (${payload.size})` : "";
+
+      // Flat-rate shipping. Small flat items (stickers / decals) ship in a stamped envelope for $3.
+      // Everything else (apparel, hats, jerseys) ships $7 flat, 5-7 business days.
+      const isFlatEnvelope = product.category === "stickers" || product.category === "decals";
+      const shippingCents = isFlatEnvelope
+        ? parseInt(process.env.SHIP_FLAT_ENVELOPE_CENTS || "300", 10)
+        : parseInt(process.env.SHIP_FLAT_STANDARD_CENTS || "700", 10);
+      const shippingLabel = isFlatEnvelope ? "USPS First-Class Envelope" : "USPS Ground Advantage";
+      const shippingEta = isFlatEnvelope ? { min: 3, max: 5 } : { min: 5, max: 7 };
+
       if (STRIPE_MODE === "preview") {
         const { db } = await import("./storage");
         const { orders } = await import("@shared/schema");
         const { eq } = await import("drizzle-orm");
         const fakeSession = `preview_order_${order.id}_${Date.now()}`;
         await db.update(orders)
-          .set({ stripeSessionId: fakeSession, paymentStatus: "preview", amountPaidCents: product.priceCents })
+          .set({ stripeSessionId: fakeSession, paymentStatus: "preview", amountPaidCents: product.priceCents + shippingCents })
           .where(eq(orders.id, order.id));
         return res.json({ orderId: order.id, checkoutUrl: `${baseUrl}/#/thanks?type=merch&id=${order.id}&preview=1`, previewMode: true });
       }
@@ -291,8 +315,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         "line_items[0][quantity]": 1,
         customer_email: payload.email,
         "shipping_address_collection[allowed_countries][0]": "US",
+        "shipping_options[0][shipping_rate_data][type]": "fixed_amount",
+        "shipping_options[0][shipping_rate_data][display_name]": shippingLabel,
+        "shipping_options[0][shipping_rate_data][fixed_amount][amount]": shippingCents,
+        "shipping_options[0][shipping_rate_data][fixed_amount][currency]": "usd",
+        "shipping_options[0][shipping_rate_data][delivery_estimate][minimum][unit]": "business_day",
+        "shipping_options[0][shipping_rate_data][delivery_estimate][minimum][value]": shippingEta.min,
+        "shipping_options[0][shipping_rate_data][delivery_estimate][maximum][unit]": "business_day",
+        "shipping_options[0][shipping_rate_data][delivery_estimate][maximum][value]": shippingEta.max,
         "metadata[order_id]": order.id,
         "metadata[kind]": "merch",
+        "metadata[shipping_cents]": shippingCents,
         success_url: `${baseUrl}/#/thanks?type=merch&id=${order.id}`,
         cancel_url: `${baseUrl}/#/merch?canceled=1`,
       });

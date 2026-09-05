@@ -404,20 +404,45 @@ async function applyEventConfig() {
   console.log("[config] Events synced (2 published rounds, invite-only)");
 }
 
-// ============ PRODUCT IMAGE BACKFILL ============
-// Idempotent: sets imageUrl on known products that are missing an image.
+// ============ PRODUCT CATALOG APPLY ============
+// Idempotent: ensures the six catalog products exist and have current imageUrl.
+// Safe to run on every boot.
 async function applyProductImages() {
-  const map: Record<string, string> = {
-    "chaos-cartel-tee-black": "/merch/tee.jpg",
-    "smoke-hoodie": "/merch/hoodie.png",
-    "chaos-cartel-sticker-pack": "/merch/stickers.png",
-  };
-  for (const [slug, url] of Object.entries(map)) {
-    await db.update(products)
-      .set({ imageUrl: url })
-      .where(and(eq(products.slug, slug), sql`(image_url IS NULL OR image_url = '')`));
+  const catalog: InsertProduct[] = [
+    { slug: "chaos-cartel-tee-black", name: "Chaos Cartel Tee — Black",
+      description: "Heavyweight 100% cotton tee. Big neon Chaos Cartel wordmark on the front, small crew mark on the back.",
+      priceCents: 3500, imageUrl: "/merch/tee.jpg", category: "apparel",
+      sizes: JSON.stringify(["S", "M", "L", "XL", "XXL"]), inStock: true },
+    { slug: "smoke-hoodie", name: "Tire Smoke Hoodie",
+      description: "Midweight fleece hoodie with a full-front print of the Chaos Cartel logo.",
+      priceCents: 6500, imageUrl: "/merch/hoodie.png", category: "apparel",
+      sizes: JSON.stringify(["S", "M", "L", "XL", "XXL"]), inStock: true },
+    { slug: "chaos-cartel-sticker-pack", name: "Sticker Pack — 5 Pack",
+      description: "Five 3\" die-cut vinyl stickers. Weatherproof. Slap them on your helmet, cage, or toolbox.",
+      priceCents: 1000, imageUrl: "/merch/stickers.png", category: "stickers",
+      sizes: null, inStock: true },
+    { slug: "chaos-cartel-snapback", name: "Chaos Cartel Snapback",
+      description: "Structured flat-brim snapback. Embroidered neon Chaos Cartel wordmark on the front. One size fits most.",
+      priceCents: 3000, imageUrl: "/merch/hat.png", category: "headwear",
+      sizes: null, inStock: true },
+    { slug: "chaos-cartel-decal-sheet", name: "Car Decal Sheet — 6 Pack",
+      description: "Six large weatherproof vinyl decals sized for windshield, door panels, and quarter panels. Kiss-cut on a single 12x18 sheet.",
+      priceCents: 2500, imageUrl: "/merch/decals.png", category: "decals",
+      sizes: null, inStock: true },
+    { slug: "chaos-cartel-driver-jersey", name: "Driver Jersey",
+      description: "Long-sleeve moisture-wicking jersey with color-blocked neon side panels. Your number goes on the right chest — leave a note at checkout.",
+      priceCents: 8500, imageUrl: "/merch/jersey.png", category: "apparel",
+      sizes: JSON.stringify(["S", "M", "L", "XL", "XXL"]), inStock: true },
+  ];
+  for (const p of catalog) {
+    const existing = await storage.getProductBySlug(p.slug);
+    if (!existing) {
+      await storage.createProduct(p);
+    } else if (!existing.imageUrl || existing.imageUrl === "") {
+      await db.update(products).set({ imageUrl: p.imageUrl }).where(eq(products.id, existing.id));
+    }
   }
-  console.log("[config] Product images backfilled");
+  console.log("[config] Product catalog synced");
 }
 
 // ============ SEED PLACEHOLDER DATA ============
@@ -489,36 +514,7 @@ export async function seed() {
     heroImageUrl: null,
   });
 
-  await storage.createProduct({
-    slug: "chaos-cartel-tee-black",
-    name: "Chaos Cartel Tee — Black",
-    description: "Heavyweight 100% cotton tee. Big neon Chaos Cartel wordmark on the front, small crew mark on the back.",
-    priceCents: 3500,
-    imageUrl: "/merch/tee.jpg",
-    category: "apparel",
-    sizes: JSON.stringify(["S", "M", "L", "XL", "XXL"]),
-    inStock: true,
-  });
-  await storage.createProduct({
-    slug: "smoke-hoodie",
-    name: "Tire Smoke Hoodie",
-    description: "Midweight fleece hoodie with a full-back print of the AE86 you know from the poster.",
-    priceCents: 6500,
-    imageUrl: "/merch/hoodie.png",
-    category: "apparel",
-    sizes: JSON.stringify(["S", "M", "L", "XL", "XXL"]),
-    inStock: true,
-  });
-  await storage.createProduct({
-    slug: "chaos-cartel-sticker-pack",
-    name: "Sticker Pack — 5 Pack",
-    description: "Five 3\" die-cut vinyl stickers. Weatherproof. Slap them on your helmet, cage, or toolbox.",
-    priceCents: 1000,
-    imageUrl: "/merch/stickers.png",
-    category: "stickers",
-    sizes: null,
-    inStock: true,
-  });
+  // Product catalog is created/updated by applyProductImages() on every boot.
 
   await storage.createCrewMember({
     name: "Rob",

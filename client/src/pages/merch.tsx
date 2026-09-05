@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ShoppingBag, X } from "lucide-react";
+import { ShoppingBag, X, Truck } from "lucide-react";
 import { Shell } from "@/components/brand/Shell";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Product } from "@shared/schema";
+
+interface ShippingQuote { shippingCents: number; label: string; etaDays: string; }
 
 export default function MerchPage() {
   const { data: products, isLoading } = useQuery<Product[]>({ queryKey: ["/api/products"] });
@@ -18,6 +20,9 @@ export default function MerchPage() {
           <span className="slash-under">MERCH</span>
         </h1>
         <p className="mt-6 max-w-2xl text-lg text-foreground/90">Wear the crew. Ship anywhere in the US.</p>
+        <p className="mt-3 inline-flex items-center gap-2 rounded-md border border-cc-cyan/40 bg-cc-cyan/5 px-3 py-1.5 text-xs font-mono tracking-widest text-cc-cyan">
+          <Truck size={14}/> FLAT $7 SHIPPING · STICKERS &amp; DECALS $3
+        </p>
 
         <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {isLoading && [1,2,3].map(i => (
@@ -72,6 +77,10 @@ function BuyModal({ product, onClose }: { product: Product; onClose: () => void 
     shippingAddress: "", shippingCity: "", shippingState: "NC", shippingZip: "",
   });
 
+  const { data: quote } = useQuery<ShippingQuote>({
+    queryKey: [`/api/shipping-quote?category=${product.category}`],
+  });
+
   const mutation = useMutation({
     mutationFn: async (payload: any) => (await apiRequest("POST", "/api/merch-orders", payload)).json(),
     onSuccess: (data) => {
@@ -79,6 +88,8 @@ function BuyModal({ product, onClose }: { product: Product; onClose: () => void 
     },
     onError: (err: any) => toast({ title: "Order failed", description: err.message, variant: "destructive" }),
   });
+
+  const totalCents = product.priceCents + (quote?.shippingCents || 0);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm grid place-items-center p-4 overflow-y-auto" onClick={onClose}>
@@ -120,13 +131,30 @@ function BuyModal({ product, onClose }: { product: Product; onClose: () => void 
             <MerchInput label="State" value={form.shippingState} onChange={v=>setForm(f=>({...f,shippingState:v}))} data-testid="input-state" />
             <MerchInput label="ZIP" value={form.shippingZip} onChange={v=>setForm(f=>({...f,shippingZip:v}))} data-testid="input-zip" />
           </div>
+          <div className="rounded-lg border border-cc-purple/40 bg-black/40 p-3 space-y-1.5">
+            <div className="flex justify-between text-sm text-foreground/80">
+              <span>Item</span>
+              <span>${(product.priceCents/100).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-sm text-foreground/80">
+              <span className="inline-flex items-center gap-1.5"><Truck size={14} className="text-cc-cyan"/> Shipping (flat rate)</span>
+              <span>{quote ? `$${(quote.shippingCents/100).toFixed(2)}` : "—"}</span>
+            </div>
+            {quote && (
+              <div className="text-[10px] font-mono tracking-widest text-foreground/50 pl-5">{quote.label.toUpperCase()} · {quote.etaDays.toUpperCase()}</div>
+            )}
+            <div className="flex justify-between pt-2 mt-1 border-t border-cc-purple/40">
+              <span className="font-display font-bold text-lg">TOTAL</span>
+              <span className="font-display font-extrabold text-lg text-cc-lime">${(totalCents/100).toFixed(2)}</span>
+            </div>
+          </div>
           <button
             type="submit"
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || !quote}
             className="w-full px-6 py-4 rounded-md btn-neon-lime text-base disabled:opacity-60"
             data-testid="button-checkout"
           >
-            {mutation.isPending ? "REDIRECTING…" : `CHECKOUT — $${(product.priceCents/100).toFixed(0)} →`}
+            {mutation.isPending ? "REDIRECTING…" : `CHECKOUT — $${(totalCents/100).toFixed(2)} →`}
           </button>
         </form>
       </div>
