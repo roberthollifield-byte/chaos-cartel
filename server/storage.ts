@@ -594,6 +594,17 @@ async function applyCrewFixups() {
     await db.delete(crewMembers).where(eq(crewMembers.id, tbdCoach.id));
     console.log("[config] Removed Coach/Tech TBD placeholder");
   }
+  // 3. Upgrade the "Driver" TBD placeholder to Josh Dalton (JD) if it still holds its placeholder bio.
+  const tbdDriver = all.find(c => c.name === "TBD" && c.role === "Driver" && c.bio === "Roster spot \u2014 add your crew from the admin panel.");
+  if (tbdDriver) {
+    await db.update(crewMembers).set({
+      name: "Josh Dalton (JD)",
+      role: "Driver",
+      car: "RHD S13 Silvia — Turbo LS3",
+      bio: "Driver.",
+    }).where(eq(crewMembers.id, tbdDriver.id));
+    console.log("[config] Updated Driver TBD to Josh Dalton");
+  }
 }
 
 // ============ SEED PLACEHOLDER DATA ============
