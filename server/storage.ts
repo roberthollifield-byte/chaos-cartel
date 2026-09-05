@@ -574,7 +574,7 @@ async function applyProductImages() {
 
 // ============ CREW FIXUPS ============
 // One-time cleanup that runs on every boot but is guarded so admin edits are respected.
-// Only touches rows that still hold the original seed placeholder values.
+// Only touches rows that still hold seed / prior-migration placeholder values.
 async function applyCrewFixups() {
   const all = await db.select().from(crewMembers);
   // 1. If Rob still has his original seed bio, upgrade to real details.
@@ -582,9 +582,10 @@ async function applyCrewFixups() {
   if (rob) {
     await db.update(crewMembers).set({
       name: "Rob D",
-      role: "Founder / Instructor",
+      role: "Founder / Driver / Instructor",
       car: "1996 240SX 400ci LS",
-      bio: "Founder, instructor.",
+      bio: "Founder, driver, instructor.",
+      imageUrl: "/crew/rob.jpg",
     }).where(eq(crewMembers.id, rob.id));
     console.log("[config] Updated Rob's crew card with real details");
   }
@@ -599,18 +600,32 @@ async function applyCrewFixups() {
   if (tbdDriver) {
     await db.update(crewMembers).set({
       name: "Josh Dalton (JD)",
-      role: "Driver",
+      role: "Founder / Driver / Instructor",
       car: "RHD S13 Silvia — Turbo LS3",
-      bio: "Driver.",
+      bio: "Founder, driver, instructor.",
       imageUrl: "/crew/jd.jpg",
     }).where(eq(crewMembers.id, tbdDriver.id));
     console.log("[config] Updated Driver TBD to Josh Dalton");
   }
-  // 4. Backfill JD's photo if his row exists without one (in case he was already upgraded).
-  const jd = all.find(c => c.name === "Josh Dalton (JD)" && !c.imageUrl);
+  // 4. Backfill Rob's photo / bio / role upgrade if he was already migrated in a prior boot.
+  const robD = all.find(c => c.name === "Rob D" && (c.bio === "Founder, instructor." || !c.imageUrl));
+  if (robD) {
+    await db.update(crewMembers).set({
+      role: "Founder / Driver / Instructor",
+      bio: "Founder, driver, instructor.",
+      imageUrl: "/crew/rob.jpg",
+    }).where(eq(crewMembers.id, robD.id));
+    console.log("[config] Backfilled Rob's photo / bio");
+  }
+  // 5. Backfill JD's photo / bio / role upgrade if he was already migrated in a prior boot.
+  const jd = all.find(c => c.name === "Josh Dalton (JD)" && (c.bio === "Driver." || !c.imageUrl));
   if (jd) {
-    await db.update(crewMembers).set({ imageUrl: "/crew/jd.jpg" }).where(eq(crewMembers.id, jd.id));
-    console.log("[config] Backfilled JD's photo");
+    await db.update(crewMembers).set({
+      role: "Founder / Driver / Instructor",
+      bio: "Founder, driver, instructor.",
+      imageUrl: "/crew/jd.jpg",
+    }).where(eq(crewMembers.id, jd.id));
+    console.log("[config] Backfilled JD's photo / bio");
   }
 }
 
