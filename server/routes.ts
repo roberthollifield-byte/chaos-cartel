@@ -95,15 +95,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }));
 
   // ============ EVENTS ============
+  // Strip inviteCode from public responses; expose only a boolean flag.
+  const publicEvent = (e: any) => {
+    const { inviteCode, ...rest } = e;
+    return { ...rest, requiresInviteCode: !!inviteCode };
+  };
+
   app.get("/api/events", async (_req, res) => {
     const events = await storage.listEvents();
-    res.json(events.filter(e => e.status === "published"));
+    res.json(events.filter(e => e.status === "published").map(publicEvent));
   });
 
   app.get("/api/events/:slug", async (req, res) => {
     const event = await storage.getEventBySlug(req.params.slug);
     if (!event) return res.status(404).json({ message: "Event not found" });
-    res.json(event);
+    res.json(publicEvent(event));
   });
 
   // ============ CREW ============
@@ -130,6 +136,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const event = await storage.getEventById(payload.eventId);
       if (!event) return res.status(404).json({ message: "Event not found" });
       if (event.status !== "published") return res.status(400).json({ message: "Event not available" });
+
+      // Invite-code gate (case-insensitive, whitespace-trimmed)
+      if (event.inviteCode) {
+        const supplied = (payload.inviteCode || "").trim().toUpperCase();
+        const expected = event.inviteCode.trim().toUpperCase();
+        if (!supplied || supplied !== expected) {
+          return res.status(403).json({ message: "Invalid invite code for this event" });
+        }
+      }
 
       // Capacity check
       let priceCents = 0;

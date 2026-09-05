@@ -66,8 +66,11 @@ export async function bootstrapSchema() {
       spectator_slots INTEGER NOT NULL DEFAULT 200,
       status TEXT NOT NULL DEFAULT 'published',
       hero_image_url TEXT,
+      invite_code TEXT,
       created_at BIGINT NOT NULL DEFAULT 0
     );
+    -- Idempotent column add for pre-existing deploys
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS invite_code TEXT;
     CREATE TABLE IF NOT EXISTS registrations (
       id SERIAL PRIMARY KEY,
       event_id INTEGER NOT NULL,
@@ -307,11 +310,96 @@ export class DatabaseStorage implements IStorage {
 
 export const storage = new DatabaseStorage();
 
+// ============ EVENT CONFIG (idempotent, runs every boot) ============
+// Owner: keep this in sync with what the crew wants live on the site.
+async function applyEventConfig() {
+  // Delete Round 3 if it exists (invite-only two-round schedule)
+  await db.delete(events).where(eq(events.slug, "round-3-night-slide"));
+
+  // Upsert Round 1: Sat Sep 26, 2026 10 AM – 8 PM ET, Private Practice
+  await db.insert(events).values({
+    slug: "round-1-forest-city",
+    title: "ROUND 1",
+    subtitle: "Private Practice",
+    description: "Invite-only practice day. All-day open track for our crew. Ride-alongs by arrangement. Spectators by invite.",
+    location: "Forest City, NC",
+    venue: "Chaos Cartel Track",
+    startsAt: 1790431200, // Sat Sep 26 2026 10:00 AM EDT
+    endsAt: 1790467200,   // Sat Sep 26 2026 8:00 PM EDT
+    driverPriceCents: 11000,
+    driverSlots: 15,
+    rideAlongPriceCents: 2500,
+    rideAlongSlots: 15,
+    spectatorPriceCents: 1000,
+    spectatorSlots: 45,
+    status: "published",
+    heroImageUrl: null,
+    inviteCode: "TIRE-FIRE-926",
+    createdAt: Math.floor(Date.now() / 1000),
+  }).onConflictDoUpdate({
+    target: events.slug,
+    set: {
+      title: "ROUND 1",
+      subtitle: "Private Practice",
+      description: "Invite-only practice day. All-day open track for our crew. Ride-alongs by arrangement. Spectators by invite.",
+      startsAt: 1790431200,
+      endsAt: 1790467200,
+      driverSlots: 15,
+      rideAlongSlots: 15,
+      spectatorSlots: 45,
+      status: "published",
+      inviteCode: "TIRE-FIRE-926",
+    },
+  });
+
+  // Upsert Round 2: Sat Oct 17, 2026 10 AM – 8 PM ET, Private Practice
+  await db.insert(events).values({
+    slug: "round-2-seat-time-saturday",
+    title: "ROUND 2",
+    subtitle: "Private Practice",
+    description: "Invite-only practice day. All-day open track for our crew. Ride-alongs by arrangement. Spectators by invite.",
+    location: "Forest City, NC",
+    venue: "Chaos Cartel Track",
+    startsAt: 1792245600, // Sat Oct 17 2026 10:00 AM EDT
+    endsAt: 1792281600,   // Sat Oct 17 2026 8:00 PM EDT
+    driverPriceCents: 12000,
+    driverSlots: 15,
+    rideAlongPriceCents: 2500,
+    rideAlongSlots: 15,
+    spectatorPriceCents: 1000,
+    spectatorSlots: 45,
+    status: "published",
+    heroImageUrl: null,
+    inviteCode: "APEX-CULT-1017",
+    createdAt: Math.floor(Date.now() / 1000),
+  }).onConflictDoUpdate({
+    target: events.slug,
+    set: {
+      title: "ROUND 2",
+      subtitle: "Private Practice",
+      description: "Invite-only practice day. All-day open track for our crew. Ride-alongs by arrangement. Spectators by invite.",
+      startsAt: 1792245600,
+      endsAt: 1792281600,
+      driverSlots: 15,
+      rideAlongSlots: 15,
+      spectatorSlots: 45,
+      status: "published",
+      inviteCode: "APEX-CULT-1017",
+    },
+  });
+
+  console.log("[config] Events synced (2 published rounds, invite-only)");
+}
+
 // ============ SEED PLACEHOLDER DATA ============
 // Runs once on empty DB. Safe to leave enabled — no-op if events already exist.
 export async function seed() {
   await bootstrapSchema();
+  // Apply event config on every boot (idempotent upsert)
+  await applyEventConfig();
   const existing = await db.select().from(events);
+  // Existing events (which include the two we just upserted) means the initial
+  // seed of products/crew/admin already ran on a prior boot.
   if (existing.length > 0) return;
   const now = Math.floor(Date.now() / 1000);
   const day = 86400;

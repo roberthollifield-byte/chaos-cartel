@@ -42,6 +42,7 @@ export const events = pgTable("events", {
   spectatorSlots: integer("spectator_slots").notNull().default(200),
   status: text("status").notNull().default("published"), // draft | published | sold_out | closed
   heroImageUrl: text("hero_image_url"),
+  inviteCode: text("invite_code"), // null = open registration; set = invite-only
   createdAt: bigint("created_at", { mode: "number" }).notNull().default(0),
 });
 
@@ -123,6 +124,7 @@ export const bookingPayloadSchema = z.object({
   experienceLevel: z.enum(["beginner", "intermediate", "advanced"]).optional(),
   waiverSignatureName: z.string().min(1),
   waiverAgreed: z.literal(true),
+  inviteCode: z.string().optional(),
 });
 export type BookingPayload = z.infer<typeof bookingPayloadSchema>;
 

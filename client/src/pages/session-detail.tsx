@@ -194,6 +194,7 @@ function RegistrationForm({
     experienceLevel: "beginner",
     tires: false, brakes: false, seatbelt: false, battery: false, fluids: false, rollCageOrBar: false, helmet: false,
     waiverSignatureName: "", waiverAgreed: false, rideAlongWaiverAgreed: false,
+    inviteCode: "",
   });
   const [errors, setErrors] = useState<Record<string,string>>({});
 
@@ -202,6 +203,7 @@ function RegistrationForm({
 
   function validate() {
     const errs: Record<string,string> = {};
+    if ((event as any).requiresInviteCode && !form.inviteCode.trim()) errs.inviteCode = "Invite code required";
     if (!form.firstName) errs.firstName = "Required";
     if (!form.lastName) errs.lastName = "Required";
     if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = "Valid email required";
@@ -237,6 +239,7 @@ function RegistrationForm({
       emergencyContactPhone: form.emergencyContactPhone || undefined,
       waiverSignatureName: form.waiverSignatureName || form.firstName + " " + form.lastName,
       waiverAgreed: true,
+      inviteCode: form.inviteCode?.trim() || undefined,
     };
     if (ticketType === "driver") {
       payload.carYear = form.carYear;
@@ -254,6 +257,20 @@ function RegistrationForm({
 
   return (
     <form onSubmit={handleSubmit} className="mt-10 space-y-8" data-testid="form-registration">
+      {(event as any).requiresInviteCode && (
+        <FormSection title="INVITE CODE" accent="cc-magenta">
+          <p className="text-sm text-muted-foreground mb-3">
+            This is an invite-only event. Enter the code you were given by the crew.
+          </p>
+          <Field
+            label="Invite code"
+            value={form.inviteCode}
+            onChange={v => set("inviteCode", v.toUpperCase())}
+            error={errors.inviteCode}
+            data-testid="input-inviteCode"
+          />
+        </FormSection>
+      )}
       <FormSection title="YOUR INFO" accent="cc-lime">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="First name" value={form.firstName} onChange={v=>set("firstName",v)} error={errors.firstName} data-testid="input-firstName" />
