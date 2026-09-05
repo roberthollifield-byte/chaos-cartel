@@ -572,6 +572,30 @@ async function applyProductImages() {
   console.log("[config] Product catalog + stock synced");
 }
 
+// ============ CREW FIXUPS ============
+// One-time cleanup that runs on every boot but is guarded so admin edits are respected.
+// Only touches rows that still hold the original seed placeholder values.
+async function applyCrewFixups() {
+  const all = await db.select().from(crewMembers);
+  // 1. If Rob still has his original seed bio, upgrade to real details.
+  const rob = all.find(c => c.name === "Rob" && c.bio === "Started Chaos Cartel out of Rob's Rod Shop. Runs the show and the track.");
+  if (rob) {
+    await db.update(crewMembers).set({
+      name: "Rob D",
+      role: "Founder / Instructor",
+      car: "1996 240SX 400ci LS",
+      bio: "Founder, instructor.",
+    }).where(eq(crewMembers.id, rob.id));
+    console.log("[config] Updated Rob's crew card with real details");
+  }
+  // 2. Delete the "Coach / Tech" TBD placeholder if it still has its original bio.
+  const tbdCoach = all.find(c => c.name === "TBD" && c.role === "Coach / Tech" && c.bio === "Handles rookie coaching and pre-run tech inspections.");
+  if (tbdCoach) {
+    await db.delete(crewMembers).where(eq(crewMembers.id, tbdCoach.id));
+    console.log("[config] Removed Coach/Tech TBD placeholder");
+  }
+}
+
 // ============ SEED PLACEHOLDER DATA ============
 // Runs once on empty DB. Safe to leave enabled — no-op if events already exist.
 export async function seed() {
@@ -580,6 +604,8 @@ export async function seed() {
   await applyEventConfig();
   // Backfill product images if missing (idempotent)
   await applyProductImages();
+  // Apply crew fixups (idempotent — guarded by seed-value checks)
+  await applyCrewFixups();
   const existing = await db.select().from(events);
   // Existing events (which include the two we just upserted) means the initial
   // seed of products/crew/admin already ran on a prior boot.
