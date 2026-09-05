@@ -123,7 +123,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ============ PRODUCTS ============
   app.get("/api/products", async (_req, res) => {
     const products = await storage.listProducts();
-    res.json(products);
+    // Enrich each product with per-size stock so the merch page can disable OOS sizes
+    // and hide fully sold-out products without an extra round-trip.
+    const allVariants = await storage.listVariants();
+    const byProduct = new Map<number, { size: string | null; quantity: number; unlimitedStock: boolean }[]>();
+    for (const v of allVariants) {
+      const arr = byProduct.get(v.productId) ?? [];
+      arr.push({ size: v.size, quantity: v.quantity, unlimitedStock: v.unlimitedStock });
+      byProduct.set(v.productId, arr);
+    }
+    const enriched = products.map(p => {
+      const variants = byProduct.get(p.id) ?? [];
+      // Aggregate stock: unlimited if any variant is unlimited, else sum quantities.
+      const anyUnlimited = variants.some(v => v.unlimitedStock);
+      const totalStock = anyUnlimited ? null : variants.reduce((s, v) => s + Math.max(0, v.quantity), 0);
+      return { ...p, variants, totalStock };
+    });
+    res.json(enriched);
   });
 
   // Shipping helper. One shipping charge per order.
@@ -283,6 +299,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const product = await storage.getProductById(payload.productId);
       if (!product || !product.inStock) return res.status(404).json({ message: "Product unavailable" });
 
+      // Legacy single-item path also honors per-size stock.
+      const reservedOk = await storage.reserveStock(product.id, payload.size || null, 1);
+      if (!reservedOk) {
+        const label = payload.size ? `${product.name} (size ${payload.size})` : product.name;
+        return res.status(409).json({ message: `Sorry — ${label} is out of stock.` });
+      }
+
       const order = await storage.createOrder({
         productId: product.id,
         size: payload.size || null,
@@ -371,6 +394,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const p = await storage.getProductById(item.productId);
         if (!p || !p.inStock) return res.status(400).json({ message: `Product ${item.productId} unavailable` });
         productMap.set(item.productId, p);
+      }
+
+      // Reserve stock atomically for every line. If any reservation fails, roll back
+      // everything already reserved so we don't leak inventory on a partial failure.
+      const reserved: { productId: number; size: string | null; quantity: number }[] = [];
+      for (const item of payload.items) {
+        const p = productMap.get(item.productId)!;
+        const size = item.size || null;
+        const ok = await storage.reserveStock(p.id, size, item.quantity);
+        if (!ok) {
+          // Roll back prior reservations.
+          for (const r of reserved) await storage.releaseStock(r.productId, r.size, r.quantity);
+          const label = size ? `${p.name} (size ${size})` : p.name;
+          return res.status(409).json({ message: `Sorry — ${label} is out of stock or does not have enough available. Please refresh and try again.` });
+        }
+        reserved.push({ productId: p.id, size, quantity: item.quantity });
       }
 
       // Compute totals + shipping.
@@ -467,6 +506,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       res.json({ orderId: order.id, checkoutUrl: session.url });
     } catch (err) {
+      // On any failure past reservation, best-effort release so stock isn't leaked.
+      // (The specific reservations aren't tracked outside the try scope, so this catch
+      // relies on the inner rollback above for validation-time failures. Stripe-call
+      // failures here leave stock reserved on the order row — an admin can restock manually.)
       if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid cart", errors: err.issues });
       next(err);
     }
@@ -564,12 +607,34 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             stripePaymentIntentId: s.payment_intent || null,
           });
           if (reg) await issueTicketAndEmail(reg.id).catch(e => console.error("[tickets] issue failed", e));
-        } else if (kind === "merch") {
+        } else if (kind === "merch" || kind === "merch_cart") {
           await storage.updateOrderBySession(s.id, {
             paymentStatus: "paid",
             amountPaidCents: s.amount_total || 0,
             stripePaymentIntentId: s.payment_intent || null,
           });
+          // Stock was already reserved at cart-checkout — nothing to do.
+        }
+      }
+
+      // Release reserved stock if the customer never completes checkout.
+      if (event?.type === "checkout.session.expired" || event?.type === "checkout.session.async_payment_failed") {
+        const s = event.data.object;
+        const kind = s.metadata?.kind;
+        if (kind === "merch_cart" || kind === "merch") {
+          const order = await storage.updateOrderBySession(s.id, { paymentStatus: "expired" });
+          if (order) {
+            const items = await storage.listOrderItems(order.id);
+            if (items.length > 0) {
+              for (const it of items) {
+                await storage.releaseStock(it.productId, it.size, it.quantity);
+              }
+            } else if (order.productId) {
+              // Legacy single-item order.
+              await storage.releaseStock(order.productId, order.size, 1);
+            }
+            console.log(`[stock] Released reservation for expired order ${order.id}`);
+          }
         }
       }
       res.json({ received: true });
@@ -795,6 +860,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/admin/products/:id", requireAdmin, async (req, res) => {
     const ok = await storage.deleteProduct(Number(req.params.id));
     res.json({ ok });
+  });
+
+  // Admin: stock management. Variants scoped to a product.
+  app.get("/api/admin/products/:id/variants", requireAdmin, async (req, res) => {
+    const variants = await storage.listVariants(Number(req.params.id));
+    res.json(variants);
+  });
+  app.patch("/api/admin/variants/:id", requireAdmin, async (req, res, next) => {
+    try {
+      const { quantity, unlimitedStock } = req.body as { quantity?: number; unlimitedStock?: boolean };
+      if (quantity === undefined || quantity < 0 || !Number.isFinite(quantity)) {
+        return res.status(400).json({ message: "quantity (≥0) is required" });
+      }
+      const updated = await storage.updateVariantQuantity(Number(req.params.id), Math.floor(quantity), unlimitedStock);
+      if (!updated) return res.status(404).json({ message: "Variant not found" });
+      res.json(updated);
+    } catch (err) { next(err); }
   });
 
   app.post("/api/admin/crew", requireAdmin, async (req, res, next) => {

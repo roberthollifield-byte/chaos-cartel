@@ -179,6 +179,19 @@ export const orders = pgTable("orders", {
   createdAt: bigint("created_at", { mode: "number" }).notNull().default(0),
 });
 
+// Per-size stock tracking. One row per (product, size). Products without sizes
+// get a single variant with size=null. Set unlimitedStock=true for print-on-demand
+// items like stickers/decals where we never want to block a sale.
+export const productVariants = pgTable("product_variants", {
+  id: serial("id").primaryKey(),
+  productId: integer("product_id").notNull(),
+  size: text("size"),
+  quantity: integer("quantity").notNull().default(0),
+  unlimitedStock: boolean("unlimited_stock").notNull().default(false),
+});
+export type ProductVariant = typeof productVariants.$inferSelect;
+export type InsertProductVariant = typeof productVariants.$inferInsert;
+
 export const orderItems = pgTable("order_items", {
   id: serial("id").primaryKey(),
   orderId: integer("order_id").notNull(),

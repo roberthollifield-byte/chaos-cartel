@@ -5,11 +5,12 @@
 // deploys.
 // ============================================================
 import {
-  users, events, registrations, products, orders, orderItems, crewMembers,
+  users, events, registrations, products, productVariants, orders, orderItems, crewMembers,
   type User, type InsertUser,
   type Event, type InsertEvent, type EventAvailability,
   type Registration, type InsertRegistration,
   type Product, type InsertProduct,
+  type ProductVariant, type InsertProductVariant,
   type Order, type OrderItem, type InsertOrderItem,
   type CrewMember, type InsertCrew,
 } from '@shared/schema';
@@ -152,6 +153,17 @@ export async function bootstrapSchema() {
       category TEXT NOT NULL DEFAULT 'apparel'
     );
     CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
+    -- Per-size stock. One row per (product, size). size IS NULL for one-size products.
+    CREATE TABLE IF NOT EXISTS product_variants (
+      id SERIAL PRIMARY KEY,
+      product_id INTEGER NOT NULL,
+      size TEXT,
+      quantity INTEGER NOT NULL DEFAULT 0,
+      unlimited_stock BOOLEAN NOT NULL DEFAULT false
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_variants_product_size
+      ON product_variants(product_id, COALESCE(size, ''));
+    CREATE INDEX IF NOT EXISTS idx_variants_product ON product_variants(product_id);
     CREATE TABLE IF NOT EXISTS crew_members (
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
@@ -196,6 +208,15 @@ export interface IStorage {
   getOrderById(id: number): Promise<Order | undefined>;
   createOrderItems(items: InsertOrderItem[]): Promise<OrderItem[]>;
   listOrderItems(orderId: number): Promise<OrderItem[]>;
+
+  // Stock / variants
+  listVariants(productId?: number): Promise<ProductVariant[]>;
+  getVariant(productId: number, size: string | null): Promise<ProductVariant | undefined>;
+  upsertVariant(data: InsertProductVariant): Promise<ProductVariant>;
+  updateVariantQuantity(id: number, quantity: number, unlimitedStock?: boolean): Promise<ProductVariant | undefined>;
+  // Atomic: succeeds only if variant has >= qty in stock (or unlimited). Returns true on success.
+  reserveStock(productId: number, size: string | null, quantity: number): Promise<boolean>;
+  releaseStock(productId: number, size: string | null, quantity: number): Promise<void>;
   updateOrderBySession(sessionId: string, patch: Partial<Order>): Promise<Order | undefined>;
   listOrders(): Promise<Order[]>;
 
@@ -324,6 +345,53 @@ export class DatabaseStorage implements IStorage {
   }
   async listOrderItems(orderId: number): Promise<OrderItem[]> {
     return await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+  }
+
+  async listVariants(productId?: number): Promise<ProductVariant[]> {
+    if (productId !== undefined) {
+      return await db.select().from(productVariants).where(eq(productVariants.productId, productId));
+    }
+    return await db.select().from(productVariants);
+  }
+  async getVariant(productId: number, size: string | null): Promise<ProductVariant | undefined> {
+    // COALESCE match for NULL sizes.
+    const rows = await db.select().from(productVariants).where(
+      sql`${productVariants.productId} = ${productId} AND COALESCE(${productVariants.size}, '') = COALESCE(${size}, '')`
+    );
+    return rows[0];
+  }
+  async upsertVariant(data: InsertProductVariant): Promise<ProductVariant> {
+    const existing = await this.getVariant(data.productId, data.size ?? null);
+    if (existing) return existing;
+    const rows = await db.insert(productVariants).values(data).returning();
+    return rows[0];
+  }
+  async updateVariantQuantity(id: number, quantity: number, unlimitedStock?: boolean): Promise<ProductVariant | undefined> {
+    const patch: Partial<InsertProductVariant> = { quantity };
+    if (unlimitedStock !== undefined) patch.unlimitedStock = unlimitedStock;
+    return first(await db.update(productVariants).set(patch).where(eq(productVariants.id, id)).returning());
+  }
+  async reserveStock(productId: number, size: string | null, quantity: number): Promise<boolean> {
+    // Atomic conditional decrement. Only decrements if quantity is sufficient OR variant is unlimited.
+    // Returns true if a row was updated, false if oversell would occur.
+    const result = await db.execute(sql`
+      UPDATE product_variants
+      SET quantity = CASE WHEN unlimited_stock THEN quantity ELSE quantity - ${quantity} END
+      WHERE product_id = ${productId}
+        AND COALESCE(size, '') = COALESCE(${size}, '')
+        AND (unlimited_stock = true OR quantity >= ${quantity})
+      RETURNING id
+    `);
+    return (result as any).rowCount > 0 || ((result as any).rows && (result as any).rows.length > 0);
+  }
+  async releaseStock(productId: number, size: string | null, quantity: number): Promise<void> {
+    await db.execute(sql`
+      UPDATE product_variants
+      SET quantity = quantity + ${quantity}
+      WHERE product_id = ${productId}
+        AND COALESCE(size, '') = COALESCE(${size}, '')
+        AND unlimited_stock = false
+    `);
   }
 
   async listCrew() { return db.select().from(crewMembers).orderBy(crewMembers.displayOrder); }
@@ -473,7 +541,35 @@ async function applyProductImages() {
       await db.update(products).set({ imageUrl: p.imageUrl }).where(eq(products.id, existing.id));
     }
   }
-  console.log("[config] Product catalog synced");
+  // Backfill per-size stock rows for every catalog product. Idempotent — upsertVariant
+  // skips if a row already exists, so admin adjustments are never overwritten.
+  // Defaults: unlimited for stickers/decals (print-on-demand), 10 per size for apparel,
+  // 5 for jerseys, 8 for the snapback (one size).
+  const initialStock: Record<string, { qty: number; unlimited: boolean }> = {
+    "chaos-cartel-tee-black":     { qty: 10, unlimited: false },
+    "smoke-hoodie":                { qty: 8,  unlimited: false },
+    "chaos-cartel-driver-jersey":  { qty: 5,  unlimited: false },
+    "chaos-cartel-snapback":       { qty: 8,  unlimited: false },
+    "chaos-cartel-sticker-pack":   { qty: 0,  unlimited: true },
+    "chaos-cartel-decal-sheet":    { qty: 0,  unlimited: true },
+  };
+  for (const p of catalog) {
+    const product = await storage.getProductBySlug(p.slug);
+    if (!product) continue;
+    const defaults = initialStock[p.slug] ?? { qty: 10, unlimited: false };
+    const sizeList: (string | null)[] = p.sizes
+      ? (JSON.parse(p.sizes as string) as string[])
+      : [null];
+    for (const size of sizeList) {
+      await storage.upsertVariant({
+        productId: product.id,
+        size,
+        quantity: defaults.qty,
+        unlimitedStock: defaults.unlimited,
+      });
+    }
+  }
+  console.log("[config] Product catalog + stock synced");
 }
 
 // ============ SEED PLACEHOLDER DATA ============

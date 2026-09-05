@@ -8,7 +8,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Event, Product, CrewMember, Registration, Order } from "@shared/schema";
 
-type Tab = "events" | "registrations" | "orders" | "products" | "crew";
+type Tab = "events" | "registrations" | "orders" | "products" | "stock" | "crew";
 
 export default function AdminPage() {
   const [loggedIn, setLoggedIn] = useState(false);
@@ -84,6 +84,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     { id: "events", label: "EVENTS", color: "cc-lime" },
     { id: "registrations", label: "REGISTRATIONS", color: "cc-magenta" },
     { id: "orders", label: "ORDERS", color: "cc-cyan" },
+    { id: "stock", label: "STOCK", color: "cc-magenta" },
     { id: "products", label: "MERCH", color: "cc-purple" },
     { id: "crew", label: "CREW", color: "cc-hot-pink" },
   ];
@@ -127,6 +128,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         {tab === "events" && <EventsPanel />}
         {tab === "registrations" && <RegistrationsPanel />}
         {tab === "orders" && <OrdersPanel />}
+        {tab === "stock" && <StockPanel />}
         {tab === "products" && <ProductsPanel />}
         {tab === "crew" && <CrewPanel />}
       </section>
@@ -394,6 +396,110 @@ function OrdersPanel() {
           {!isLoading && (data || []).length === 0 && <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">No orders yet.</td></tr>}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// STOCK
+// -----------------------------------------------------------------------------
+
+interface StockVariant { id: number; productId: number; size: string | null; quantity: number; unlimitedStock: boolean; }
+
+function StockPanel() {
+  const { toast } = useToast();
+  const { data: products, isLoading } = useQuery<Product[]>({ queryKey: ["/api/admin/products"] });
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg border border-cc-cyan/30 bg-cc-cyan/5 p-4 text-sm">
+        <p className="text-cc-cyan font-mono text-xs tracking-widest mb-2">// STOCK RULES</p>
+        <p className="text-foreground/80">
+          Set quantity per size. “Unlimited” disables stock checks (for print-on-demand items like stickers). Sizes with 0 stock show as sold out on the store. Products with every size at 0 are hidden entirely.
+        </p>
+      </div>
+      {isLoading && <div className="p-6 text-center text-muted-foreground">Loading…</div>}
+      {(products || []).map(p => <ProductStockRow key={p.id} product={p} />)}
+    </div>
+  );
+}
+
+function ProductStockRow({ product }: { product: Product }) {
+  const { toast } = useToast();
+  const { data: variants, isLoading } = useQuery<StockVariant[]>({
+    queryKey: [`/api/admin/products/${product.id}/variants`],
+  });
+
+  const update = useMutation({
+    mutationFn: async ({ id, quantity, unlimitedStock }: { id: number; quantity: number; unlimitedStock: boolean }) =>
+      await apiRequest("PATCH", `/api/admin/variants/${id}`, { quantity, unlimitedStock }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/products/${product.id}/variants`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      toast({ title: "Stock updated" });
+    },
+  });
+
+  return (
+    <div className="rounded-xl border border-cc-purple/40 bg-card p-5">
+      <div className="flex items-center gap-3 mb-4">
+        {product.imageUrl && <img src={product.imageUrl} alt="" className="w-14 h-14 rounded-lg object-cover border border-cc-purple/40"/>}
+        <div>
+          <h3 className="font-display font-extrabold text-lg italic">{product.name}</h3>
+          <p className="text-xs text-muted-foreground font-mono">{product.category} · ${(product.priceCents/100).toFixed(0)}</p>
+        </div>
+      </div>
+      {isLoading && <p className="text-sm text-muted-foreground">Loading stock…</p>}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+        {(variants || []).map(v => (
+          <VariantEditor key={v.id} variant={v} onSave={(qty, unlimited) => update.mutate({ id: v.id, quantity: qty, unlimitedStock: unlimited })} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function VariantEditor({ variant, onSave }: { variant: StockVariant; onSave: (qty: number, unlimited: boolean) => void }) {
+  const [qty, setQty] = useState(variant.quantity);
+  const [unlimited, setUnlimited] = useState(variant.unlimitedStock);
+  const dirty = qty !== variant.quantity || unlimited !== variant.unlimitedStock;
+
+  return (
+    <div className={`rounded-lg border-2 p-3 ${dirty ? "border-cc-lime/60 bg-cc-lime/5" : "border-cc-purple/30"}`}>
+      <div className="font-display font-bold text-sm mb-2">{variant.size || "(one size)"}</div>
+      <input
+        type="number"
+        min={0}
+        value={qty}
+        onChange={e => setQty(Math.max(0, parseInt(e.target.value) || 0))}
+        disabled={unlimited}
+        className="w-full px-2 py-1 rounded bg-background border border-cc-purple/40 font-mono text-sm mb-2 disabled:opacity-40"
+      />
+      <label className="flex items-center gap-2 text-xs mb-2 cursor-pointer">
+        <input type="checkbox" checked={unlimited} onChange={e => setUnlimited(e.target.checked)} className="accent-cc-magenta"/>
+        <span className="text-muted-foreground">Unlimited</span>
+      </label>
+      <div className="flex gap-1">
+        <button
+          type="button"
+          onClick={() => setQty(q => q + 5)}
+          disabled={unlimited}
+          className="flex-1 px-1 py-1 text-[10px] font-mono rounded border border-cc-cyan/40 text-cc-cyan hover:bg-cc-cyan/10 disabled:opacity-30"
+        >+5</button>
+        <button
+          type="button"
+          onClick={() => setQty(q => q + 10)}
+          disabled={unlimited}
+          className="flex-1 px-1 py-1 text-[10px] font-mono rounded border border-cc-cyan/40 text-cc-cyan hover:bg-cc-cyan/10 disabled:opacity-30"
+        >+10</button>
+      </div>
+      {dirty && (
+        <button
+          type="button"
+          onClick={() => onSave(qty, unlimited)}
+          className="mt-2 w-full py-1.5 text-xs font-display font-bold rounded btn-neon-lime"
+        >SAVE</button>
+      )}
     </div>
   );
 }
