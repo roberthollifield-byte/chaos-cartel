@@ -830,6 +830,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const eventId = req.query.eventId ? Number(req.query.eventId) : undefined;
     res.json(await storage.listRegistrations(eventId));
   });
+  // Delete one registration (admin-only). Used to clean up test/abandoned rows.
+  app.delete("/api/admin/registrations/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+    const deleted = await storage.deleteRegistration(id);
+    res.json({ ok: true, deleted });
+  });
+  // Bulk-purge non-paid registrations (pending/expired/failed). Optionally scope to one event.
+  app.post("/api/admin/registrations/purge-unpaid", requireAdmin, async (req, res) => {
+    const eventId = req.body?.eventId ? Number(req.body.eventId) : undefined;
+    const deleted = await storage.deleteUnpaidRegistrations(eventId);
+    res.json({ ok: true, deleted });
+  });
   app.get("/api/admin/orders", requireAdmin, async (_req, res) => {
     const orders = await storage.listOrders();
     // Enrich each order with its line items so the admin table can render multi-item orders.

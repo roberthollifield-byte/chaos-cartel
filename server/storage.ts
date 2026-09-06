@@ -194,6 +194,8 @@ export interface IStorage {
   updateRegistrationBySession(sessionId: string, patch: Partial<Registration>): Promise<Registration | undefined>;
   updateRegistrationById(id: number, patch: Partial<Registration>): Promise<Registration | undefined>;
   listRegistrations(eventId?: number): Promise<Registration[]>;
+  deleteRegistration(id: number): Promise<number>;
+  deleteUnpaidRegistrations(eventId?: number): Promise<number>;
   getRegistrationById(id: number): Promise<Registration | undefined>;
   getRegistrationByConfirmationCode(code: string): Promise<Registration | undefined>;
   countBookedByType(eventId: number): Promise<{ driver: number; ride_along: number; spectator: number }>;
@@ -295,6 +297,18 @@ export class DatabaseStorage implements IStorage {
       return db.select().from(registrations).where(eq(registrations.eventId, eventId)).orderBy(desc(registrations.createdAt));
     }
     return db.select().from(registrations).orderBy(desc(registrations.createdAt));
+  }
+  async deleteRegistration(id: number) {
+    const rows = await db.delete(registrations).where(eq(registrations.id, id)).returning({ id: registrations.id });
+    return rows.length;
+  }
+  async deleteUnpaidRegistrations(eventId?: number) {
+    // Delete anything that never made it to 'paid' — pending, expired, failed, etc.
+    const cond = eventId != null
+      ? and(sql`${registrations.paymentStatus} <> 'paid'`, eq(registrations.eventId, eventId))
+      : sql`${registrations.paymentStatus} <> 'paid'`;
+    const rows = await db.delete(registrations).where(cond).returning({ id: registrations.id });
+    return rows.length;
   }
   async getRegistrationById(id: number) {
     return first(await db.select().from(registrations).where(eq(registrations.id, id)));

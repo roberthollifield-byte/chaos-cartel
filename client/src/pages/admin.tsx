@@ -301,23 +301,68 @@ function EventEditor({ event, onClose }: { event: Event | null; onClose: () => v
 
 function RegistrationsPanel() {
   const { data, isLoading } = useQuery<(Registration & { eventTitle?: string })[]>({ queryKey: ["/api/admin/registrations"] });
+  const [showAll, setShowAll] = useState(false);
+  const { toast } = useToast();
+
+  const delOne = useMutation({
+    mutationFn: async (id: number) => await apiRequest("DELETE", `/api/admin/registrations/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/registrations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      toast({ title: "Deleted" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const purge = useMutation({
+    mutationFn: async () => await apiRequest("POST", `/api/admin/registrations/purge-unpaid`, {}),
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/registrations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      toast({ title: `Purged ${res?.deleted ?? 0} unpaid` });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const rows = (data || []).filter(r => showAll || r.paymentStatus === "paid");
+  const unpaidCount = (data || []).filter(r => r.paymentStatus !== "paid").length;
+
   return (
     <div>
-      <div className="flex justify-end mb-4">
-        <a href={`${apiBase}/api/admin/export/registrations.csv`} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-md btn-neon-outline-cyan text-sm" data-testid="button-export-registrations">
-          <Download size={16}/> EXPORT CSV
-        </a>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <label className="inline-flex items-center gap-2 text-xs font-mono tracking-widest text-cc-cyan cursor-pointer select-none">
+          <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} className="accent-cc-lime"/>
+          SHOW UNPAID / ABANDONED ({unpaidCount})
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {unpaidCount > 0 && (
+            <button
+              onClick={() => { if (confirm(`Delete ${unpaidCount} unpaid registrations? This cannot be undone.`)) purge.mutate(); }}
+              disabled={purge.isPending}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm border-2 border-destructive/50 text-destructive hover:bg-destructive/10 disabled:opacity-50"
+              data-testid="button-purge-unpaid"
+            >
+              <Trash2 size={14}/> PURGE UNPAID ({unpaidCount})
+            </button>
+          )}
+          <a href={`${apiBase}/api/admin/export/registrations.csv`} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-md btn-neon-outline-cyan text-sm" data-testid="button-export-registrations">
+            <Download size={16}/> EXPORT CSV
+          </a>
+        </div>
       </div>
       <div className="overflow-x-auto rounded-xl border border-cc-purple/40">
         <table className="w-full text-sm">
           <thead className="bg-card">
             <tr className="text-left text-xs font-mono tracking-widest text-cc-cyan">
-              <th className="p-3">EVENT</th><th className="p-3">NAME</th><th className="p-3">EMAIL</th><th className="p-3">TIER</th><th className="p-3">CAR</th><th className="p-3">CREW</th><th className="p-3">PAID</th>
+              <th className="p-3">EVENT</th><th className="p-3">NAME</th><th className="p-3">EMAIL</th><th className="p-3">TIER</th><th className="p-3">CAR</th><th className="p-3">CREW</th><th className="p-3">PAID</th><th className="p-3"></th>
             </tr>
           </thead>
           <tbody>
-            {isLoading && <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">Loading…</td></tr>}
-            {(data || []).map(r => (
+            {isLoading && <tr><td colSpan={8} className="p-6 text-center text-muted-foreground">Loading…</td></tr>}
+            {!isLoading && rows.length === 0 && <tr><td colSpan={8} className="p-6 text-center text-muted-foreground">{showAll ? "No registrations yet." : "No paid registrations yet."}</td></tr>}
+            {rows.map(r => (
               <tr key={r.id} className="border-t border-cc-purple/30" data-testid={`registration-row-${r.id}`}>
                 <td className="p-3">{r.eventTitle || `#${r.eventId}`}</td>
                 <td className="p-3">{r.firstName} {r.lastName}</td>
@@ -344,9 +389,16 @@ function RegistrationsPanel() {
                     {r.paymentStatus}
                   </span>
                 </td>
+                <td className="p-3 text-right whitespace-nowrap">
+                  <button
+                    onClick={() => { if (confirm(`Delete registration for ${r.firstName} ${r.lastName}?`)) delOne.mutate(r.id); }}
+                    className="text-destructive hover:text-cc-hot-pink"
+                    title="Delete this registration"
+                    data-testid={`delete-registration-${r.id}`}
+                  ><Trash2 size={16}/></button>
+                </td>
               </tr>
             ))}
-            {!isLoading && (data || []).length === 0 && <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">No registrations yet.</td></tr>}
           </tbody>
         </table>
       </div>
