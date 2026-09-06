@@ -106,6 +106,7 @@ export async function bootstrapSchema() {
     ALTER TABLE registrations ADD COLUMN IF NOT EXISTS crew_member_name TEXT;
     ALTER TABLE registrations ADD COLUMN IF NOT EXISTS extra_spectators INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE registrations ADD COLUMN IF NOT EXISTS extra_ride_alongs INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE registrations ADD COLUMN IF NOT EXISTS email_sent_at BIGINT;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_registrations_confirmation_code ON registrations (confirmation_code);
     CREATE TABLE IF NOT EXISTS products (
       id SERIAL PRIMARY KEY,

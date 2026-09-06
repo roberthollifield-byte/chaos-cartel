@@ -753,7 +753,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       weekday: "long", month: "long", day: "numeric", year: "numeric",
       hour: "numeric", minute: "2-digit", timeZone: "America/New_York", timeZoneName: "short",
     });
-    await sendConfirmationEmail({
+    const emailResult = await sendConfirmationEmail({
       to: reg.email,
       firstName: reg.firstName,
       lastName: reg.lastName,
@@ -773,7 +773,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       extraRideAlongPriceCents: event.rideAlongPriceCents,
       totalPaidCents: reg.amountPaidCents,
     });
+    if ((emailResult as any)?.sent) {
+      try {
+        await storage.updateRegistrationById(reg.id, { emailSentAt: Math.floor(Date.now() / 1000) } as any);
+      } catch (err) {
+        console.error(`[email] failed to record emailSentAt for reg ${reg.id}:`, err);
+      }
+    }
   }
+
+  // Admin: manually resend the confirmation email for a registration.
+  app.post("/api/admin/registrations/:id/resend-email", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    const reg = await storage.getRegistrationById(id);
+    if (!reg) return res.status(404).json({ message: "Registration not found" });
+    if (reg.paymentStatus !== "paid") return res.status(400).json({ message: "Registration is not paid" });
+    await issueTicketAndEmail(id);
+    const updated = await storage.getRegistrationById(id);
+    res.json({ ok: true, emailSentAt: (updated as any)?.emailSentAt || null });
+  });
 
   // ============ POLL: verify a session after redirect (fallback for no-webhook dev) ============
   app.get("/api/verify/:sessionId", async (req, res, next) => {

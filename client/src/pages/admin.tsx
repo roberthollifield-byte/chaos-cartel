@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { apiBase } from "@/lib/queryClient";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Download, LogOut, Plus, Trash2, Edit2, X, QrCode, FileText } from "lucide-react";
+import { Download, LogOut, Plus, Trash2, Edit2, X, QrCode, FileText, Mail, MailCheck } from "lucide-react";
 import { Link } from "wouter";
 import { Shell } from "@/components/brand/Shell";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -315,6 +315,15 @@ function RegistrationsPanel() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const resend = useMutation({
+    mutationFn: async (id: number) => await apiRequest("POST", `/api/admin/registrations/${id}/resend-email`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/registrations"] });
+      toast({ title: "Email resent" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   const purge = useMutation({
     mutationFn: async () => await apiRequest("POST", `/api/admin/registrations/purge-unpaid`, {}),
     onSuccess: (res: any) => {
@@ -390,6 +399,19 @@ function RegistrationsPanel() {
                   </span>
                 </td>
                 <td className="p-3 text-right whitespace-nowrap">
+                  {r.paymentStatus === "paid" && (
+                    <button
+                      onClick={() => resend.mutate(r.id)}
+                      disabled={resend.isPending}
+                      className={`mr-3 inline-flex items-center ${((r as any).emailSentAt) ? "text-cc-lime hover:text-cc-cyan" : "text-muted-foreground hover:text-cc-lime"} disabled:opacity-50`}
+                      title={(r as any).emailSentAt
+                        ? `Email sent ${new Date(((r as any).emailSentAt) * 1000).toLocaleString()} — click to resend`
+                        : "Email never confirmed sent — click to send now"}
+                      data-testid={`resend-email-${r.id}`}
+                    >
+                      {((r as any).emailSentAt) ? <MailCheck size={16}/> : <Mail size={16}/>}
+                    </button>
+                  )}
                   <button
                     onClick={() => { if (confirm(`Delete registration for ${r.firstName} ${r.lastName}?`)) delOne.mutate(r.id); }}
                     className="text-destructive hover:text-cc-hot-pink"

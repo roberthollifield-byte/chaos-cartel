@@ -91,6 +91,8 @@ export const registrations = pgTable("registrations", {
   crewMemberName: text("crew_member_name"), // free bring-a-friend, driver only
   extraSpectators: integer("extra_spectators").notNull().default(0), // paid extra spectator seats
   extraRideAlongs: integer("extra_ride_alongs").notNull().default(0), // paid extra ride-along seats
+  // Confirmation email status (unix seconds when Resend accepted the send). Null = never sent.
+  emailSentAt: bigint("email_sent_at", { mode: "number" }),
   createdAt: bigint("created_at", { mode: "number" }).notNull().default(0),
 });
 
