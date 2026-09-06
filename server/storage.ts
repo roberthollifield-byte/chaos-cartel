@@ -103,6 +103,8 @@ export async function bootstrapSchema() {
     ALTER TABLE registrations ADD COLUMN IF NOT EXISTS confirmation_code TEXT;
     ALTER TABLE registrations ADD COLUMN IF NOT EXISTS checked_in_at BIGINT;
     ALTER TABLE registrations ADD COLUMN IF NOT EXISTS checked_in_by TEXT;
+    ALTER TABLE registrations ADD COLUMN IF NOT EXISTS crew_member_name TEXT;
+    ALTER TABLE registrations ADD COLUMN IF NOT EXISTS extra_spectators INTEGER NOT NULL DEFAULT 0;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_registrations_confirmation_code ON registrations (confirmation_code);
     CREATE TABLE IF NOT EXISTS products (
       id SERIAL PRIMARY KEY,
@@ -310,6 +312,17 @@ export class DatabaseStorage implements IStorage {
       else if (r.ticketType === 'ride_along') out.ride_along = Number(r.c);
       else if (r.ticketType === 'spectator') out.spectator = Number(r.c);
     }
+    // Paid driver extras also occupy spectator seats.
+    const extraRow = first(await db.select({
+      total: sql<number>`coalesce(sum(extra_spectators),0)::int`,
+    })
+    .from(registrations)
+    .where(and(
+      eq(registrations.eventId, eventId),
+      eq(registrations.paymentStatus, 'paid'),
+      eq(registrations.ticketType, 'driver'),
+    ))) as { total: number } | undefined;
+    out.spectator += Number(extraRow?.total || 0);
     return out;
   }
 

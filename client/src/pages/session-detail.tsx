@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Calendar, Clock, MapPin, AlertTriangle, Wrench, ArrowLeft } from "lucide-react";
+import { Calendar, Clock, MapPin, AlertTriangle, Wrench, ArrowLeft, Users, Plus, Minus, Gift } from "lucide-react";
 import { Shell } from "@/components/brand/Shell";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -21,7 +21,7 @@ const TICKET_META: Record<TicketType, { label: string; color: string; needsWaive
     label: "DRIVER ENTRY",
     color: "cc-lime",
     needsWaiver: true,
-    description: "Full-day track access. Bring your car, your helmet, and your line. Includes tech inspection and coaching if needed.",
+    description: "Full-day track access. Bring your car, your helmet, and your line. Includes tech inspection, coaching if needed, and 1 free crew member (bring-a-friend).",
   },
   ride_along: {
     label: "RIDE-ALONG",
@@ -71,7 +71,7 @@ export default function SessionDetailPage() {
   const remaining =
     ticketType === "driver" ? event.driverRemaining :
     ticketType === "ride_along" ? event.rideAlongRemaining : event.spectatorRemaining;
-  const priceCents =
+  const basePriceCents =
     ticketType === "driver" ? event.driverPriceCents :
     ticketType === "ride_along" ? event.rideAlongPriceCents : event.spectatorPriceCents;
 
@@ -139,6 +139,11 @@ export default function SessionDetailPage() {
                   <div className="text-xs font-mono tracking-widest text-muted-foreground mt-1">
                     {isSold ? "SOLD OUT" : `${rem} SPOTS LEFT`}
                   </div>
+                  {t === "driver" && !isSold && (
+                    <div className="mt-2 inline-flex items-center gap-1 text-[10px] font-mono tracking-widest text-cc-lime uppercase">
+                      <Gift size={12} /> +1 crew free
+                    </div>
+                  )}
                 </button>
               );
             })}
@@ -157,14 +162,14 @@ export default function SessionDetailPage() {
               data-testid="button-continue-registration"
               className={`px-8 py-4 rounded-md ${remaining === 0 ? "bg-muted text-muted-foreground cursor-not-allowed" : "btn-neon-lime"}`}
             >
-              {remaining === 0 ? "SOLD OUT" : `CONTINUE — $${(priceCents/100).toFixed(0)} →`}
+              {remaining === 0 ? "SOLD OUT" : `CONTINUE — $${(basePriceCents/100).toFixed(0)} →`}
             </button>
           </div>
         ) : (
           <RegistrationForm
             event={event}
             ticketType={ticketType}
-            priceCents={priceCents}
+            basePriceCents={basePriceCents}
             onSubmit={(payload) => bookMutation.mutate(payload)}
             isSubmitting={bookMutation.isPending}
           />
@@ -179,11 +184,11 @@ export default function SessionDetailPage() {
 // -----------------------------------------------------------------------------
 
 function RegistrationForm({
-  event, ticketType, priceCents, onSubmit, isSubmitting,
+  event, ticketType, basePriceCents, onSubmit, isSubmitting,
 }: {
   event: EventAvailability;
   ticketType: TicketType;
-  priceCents: number;
+  basePriceCents: number;
   onSubmit: (payload: any) => void;
   isSubmitting: boolean;
 }) {
@@ -195,6 +200,8 @@ function RegistrationForm({
     tires: false, brakes: false, seatbelt: false, battery: false, fluids: false, rollCageOrBar: false, helmet: false,
     waiverSignatureName: "", waiverAgreed: false, rideAlongWaiverAgreed: false,
     inviteCode: "",
+    crewMemberName: "",
+    extraSpectators: 0,
   });
   const [errors, setErrors] = useState<Record<string,string>>({});
 
@@ -251,6 +258,8 @@ function RegistrationForm({
         tires: form.tires, brakes: form.brakes, seatbelt: form.seatbelt,
         battery: form.battery, fluids: form.fluids, rollCageOrBar: form.rollCageOrBar, helmet: form.helmet,
       };
+      payload.crewMemberName = form.crewMemberName?.trim() || undefined;
+      payload.extraSpectators = Math.max(0, Math.min(4, Number(form.extraSpectators) || 0));
     }
     onSubmit(payload);
   }
@@ -284,6 +293,64 @@ function RegistrationForm({
 
       {ticketType === "driver" && (
         <>
+          <FormSection title="BRING YOUR CREW" accent="cc-lime" icon={<Users size={18} />}>
+            <div className="mb-4 p-4 rounded-lg bg-cc-lime/10 border border-cc-lime/40">
+              <div className="flex items-start gap-3">
+                <Gift className="text-cc-lime shrink-0 mt-0.5" size={20} />
+                <div>
+                  <div className="font-display font-extrabold text-cc-lime text-lg italic tracking-wide">1 FREE CREW MEMBER</div>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Every driver entry includes 1 free bring-a-friend. Bring anyone — crew, family, ride buddy — no extra ticket needed.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field
+                label="Crew member name (optional)"
+                value={form.crewMemberName}
+                onChange={(v: string)=>set("crewMemberName",v)}
+                data-testid="input-crewMemberName"
+              />
+              <div>
+                <label className="block text-xs font-mono tracking-widest text-cc-cyan mb-1.5">
+                  ADDITIONAL CREW (${(event.spectatorPriceCents/100).toFixed(0)} EACH)
+                </label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={()=>set("extraSpectators", Math.max(0, (form.extraSpectators||0)-1))}
+                    disabled={form.extraSpectators <= 0}
+                    className="w-11 h-11 rounded-md border-2 border-cc-purple/40 text-cc-cyan hover:border-cc-cyan disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+                    data-testid="button-extras-decrement"
+                  >
+                    <Minus size={18} />
+                  </button>
+                  <div
+                    className="flex-1 text-center px-3 py-2.5 rounded-md bg-background border-2 border-cc-purple/40 text-cc-lime font-display font-extrabold text-2xl italic"
+                    data-testid="text-extras-count"
+                  >
+                    {form.extraSpectators || 0}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={()=>set("extraSpectators", Math.min(4, (form.extraSpectators||0)+1))}
+                    disabled={form.extraSpectators >= 4}
+                    className="w-11 h-11 rounded-md border-2 border-cc-purple/40 text-cc-cyan hover:border-cc-cyan disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+                    data-testid="button-extras-increment"
+                  >
+                    <Plus size={18} />
+                  </button>
+                </div>
+                {form.extraSpectators > 0 && (
+                  <div className="mt-2 text-xs font-mono text-cc-magenta">
+                    +${((form.extraSpectators * event.spectatorPriceCents)/100).toFixed(0)} for {form.extraSpectators} extra {form.extraSpectators === 1 ? "guest" : "guests"}
+                  </div>
+                )}
+              </div>
+            </div>
+          </FormSection>
+
           <FormSection title="YOUR CAR" accent="cc-magenta">
             <div className="grid gap-4 sm:grid-cols-4">
               <Field label="Year" value={form.carYear} onChange={v=>set("carYear",v)} data-testid="input-carYear" />
@@ -400,9 +467,14 @@ function RegistrationForm({
       <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-cc-purple/30">
         <div>
           <div className="text-xs font-mono tracking-widest text-muted-foreground">TOTAL DUE AT CHECKOUT</div>
-          <div className="font-display font-extrabold text-4xl italic text-cc-lime text-shadow-neon-lime">
-            ${(priceCents/100).toFixed(0)}
+          <div className="font-display font-extrabold text-4xl italic text-cc-lime text-shadow-neon-lime" data-testid="text-total">
+            ${((basePriceCents + (ticketType === "driver" ? (Number(form.extraSpectators)||0) * event.spectatorPriceCents : 0))/100).toFixed(0)}
           </div>
+          {ticketType === "driver" && form.extraSpectators > 0 && (
+            <div className="mt-1 text-xs font-mono text-muted-foreground">
+              ${(basePriceCents/100).toFixed(0)} entry + {form.extraSpectators} × ${(event.spectatorPriceCents/100).toFixed(0)} crew
+            </div>
+          )}
         </div>
         <button
           type="submit"

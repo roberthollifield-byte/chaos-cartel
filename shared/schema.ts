@@ -87,6 +87,9 @@ export const registrations = pgTable("registrations", {
   confirmationCode: text("confirmation_code").unique(), // e.g. CC-A7K9-2Q4M — used as QR payload
   checkedInAt: bigint("checked_in_at", { mode: "number" }), // null = not checked in
   checkedInBy: text("checked_in_by"), // admin username who scanned
+  // Driver crew add-ons: 1 free crew guest per driver + 0..N paid extras at spectator price
+  crewMemberName: text("crew_member_name"), // free bring-a-friend, driver only
+  extraSpectators: integer("extra_spectators").notNull().default(0), // paid extras (spectator rate)
   createdAt: bigint("created_at", { mode: "number" }).notNull().default(0),
 });
 
@@ -126,6 +129,9 @@ export const bookingPayloadSchema = z.object({
     helmet: z.boolean(),
   }).optional(),
   experienceLevel: z.enum(["beginner", "intermediate", "advanced"]).optional(),
+  // Driver crew add-ons
+  crewMemberName: z.string().max(80).optional(),
+  extraSpectators: z.number().int().min(0).max(4).optional(),
   waiverSignatureName: z.string().min(1),
   waiverAgreed: z.literal(true),
   inviteCode: z.string().optional(),

@@ -192,6 +192,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
+      // Normalize driver-only add-ons (ignored on other ticket types).
+      const isDriver = payload.ticketType === "driver";
+      const crewMemberName = isDriver ? (payload.crewMemberName?.trim() || null) : null;
+      const extraSpectators = isDriver ? Math.max(0, Math.min(4, payload.extraSpectators ?? 0)) : 0;
+
       // Capacity check
       let priceCents = 0;
       let itemName = "";
@@ -200,8 +205,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!payload.techInspection || !payload.experienceLevel || !payload.carMake) {
           return res.status(400).json({ message: "Driver registration requires car details, tech inspection, and experience level" });
         }
-        priceCents = event.driverPriceCents;
-        itemName = `${event.title} — Driver Entry`;
+        // Paid extras also need physical spectator capacity. The 1 free crew guest is a bring-a-friend, not a ticketed seat.
+        if (extraSpectators > 0 && event.spectatorRemaining < extraSpectators) {
+          return res.status(400).json({ message: `Only ${event.spectatorRemaining} spectator spots left \u2014 reduce extra crew members.` });
+        }
+        priceCents = event.driverPriceCents + (extraSpectators * event.spectatorPriceCents);
+        itemName = `${event.title} \u2014 Driver Entry`;
       } else if (payload.ticketType === "ride_along") {
         if (event.rideAlongRemaining <= 0) return res.status(400).json({ message: "Ride-along spots sold out" });
         priceCents = event.rideAlongPriceCents;
@@ -228,6 +237,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         carColor: payload.carColor || null,
         techInspection: payload.techInspection ? JSON.stringify(payload.techInspection) : null,
         experienceLevel: payload.experienceLevel || null,
+        crewMemberName,
+        extraSpectators,
         waiverSigned: true,
         waiverSignedAt: Math.floor(Date.now() / 1000),
         waiverSignatureName: payload.waiverSignatureName,
@@ -251,25 +262,39 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.json({ checkoutUrl: `${baseUrl}/#/thanks?type=registration&id=${reg.id}&preview=1`, previewMode: true });
       }
       try {
-        const session = await stripeCall("/checkout/sessions", {
+        // Build the base line item (driver / ride_along / spectator). For drivers we
+        // use the base driver price, then append separate line items for each paid extra so
+        // it's itemized on the Stripe receipt.
+        const baseLinePrice = isDriver ? event.driverPriceCents : priceCents;
+        const stripeParams: Record<string, any> = {
           mode: "payment",
           "payment_method_types[0]": "card",
           "line_items[0][price_data][currency]": "usd",
-          "line_items[0][price_data][unit_amount]": priceCents,
+          "line_items[0][price_data][unit_amount]": baseLinePrice,
           "line_items[0][price_data][product_data][name]": itemName,
-          "line_items[0][price_data][product_data][description]": `${payload.firstName} ${payload.lastName} — ${event.location}`,
+          "line_items[0][price_data][product_data][description]":
+            isDriver && crewMemberName
+              ? `${payload.firstName} ${payload.lastName} + ${crewMemberName} (free crew) \u2014 ${event.location}`
+              : `${payload.firstName} ${payload.lastName} \u2014 ${event.location}`,
           "line_items[0][quantity]": 1,
           customer_email: payload.email,
           "metadata[registration_id]": reg.id,
           "metadata[event_id]": event.id,
           "metadata[ticket_type]": payload.ticketType,
+          "metadata[extra_spectators]": extraSpectators,
           "metadata[kind]": "registration",
           success_url: `${baseUrl}/#/thanks?type=registration&id=${reg.id}`,
           cancel_url: `${baseUrl}/#/sessions/${event.slug}?canceled=1`,
-          payment_intent_data: {
-            "metadata[registration_id]": reg.id,
-          },
-        });
+          "payment_intent_data[metadata][registration_id]": reg.id,
+        };
+        if (isDriver && extraSpectators > 0) {
+          stripeParams["line_items[1][price_data][currency]"] = "usd";
+          stripeParams["line_items[1][price_data][unit_amount]"] = event.spectatorPriceCents;
+          stripeParams["line_items[1][price_data][product_data][name]"] = `${event.title} \u2014 Extra Crew Member`;
+          stripeParams["line_items[1][price_data][product_data][description]"] = `Additional guest at spectator rate`;
+          stripeParams["line_items[1][quantity]"] = extraSpectators;
+        }
+        const session = await stripeCall("/checkout/sessions", stripeParams);
         // Save session id on the registration
         const { db } = await import("./storage");
         const { registrations } = await import("@shared/schema");
@@ -787,7 +812,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const rows = await storage.listRegistrations(eventId);
     const headers = [
       "id","event_id","ticket_type","first_name","last_name","email","phone",
-      "car","experience","waiver_signed","waiver_signature","amount_paid_cents",
+      "car","experience","crew_member_name","extra_spectators","waiver_signed","waiver_signature","amount_paid_cents",
       "payment_status","created_at",
     ];
     const csv = [
@@ -802,6 +827,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         r.phone,
         `"${[r.carYear, r.carMake, r.carModel, r.carColor].filter(Boolean).join(" ")}"`,
         r.experienceLevel || "",
+        `"${(r as any).crewMemberName || ""}"`,
+        (r as any).extraSpectators || 0,
         r.waiverSigned ? "yes" : "no",
         `"${r.waiverSignatureName || ""}"`,
         r.amountPaidCents,

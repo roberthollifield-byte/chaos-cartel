@@ -312,11 +312,11 @@ function RegistrationsPanel() {
         <table className="w-full text-sm">
           <thead className="bg-card">
             <tr className="text-left text-xs font-mono tracking-widest text-cc-cyan">
-              <th className="p-3">EVENT</th><th className="p-3">NAME</th><th className="p-3">EMAIL</th><th className="p-3">TIER</th><th className="p-3">CAR</th><th className="p-3">PAID</th>
+              <th className="p-3">EVENT</th><th className="p-3">NAME</th><th className="p-3">EMAIL</th><th className="p-3">TIER</th><th className="p-3">CAR</th><th className="p-3">CREW</th><th className="p-3">PAID</th>
             </tr>
           </thead>
           <tbody>
-            {isLoading && <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">Loading…</td></tr>}
+            {isLoading && <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">Loading…</td></tr>}
             {(data || []).map(r => (
               <tr key={r.id} className="border-t border-cc-purple/30" data-testid={`registration-row-${r.id}`}>
                 <td className="p-3">{r.eventTitle || `#${r.eventId}`}</td>
@@ -330,6 +330,14 @@ function RegistrationsPanel() {
                   }`}>{r.ticketType}</span>
                 </td>
                 <td className="p-3 text-muted-foreground">{r.carMake ? `${r.carYear||''} ${r.carMake} ${r.carModel||''}`.trim() : "—"}</td>
+                <td className="p-3 text-xs text-muted-foreground">
+                  {r.ticketType === 'driver' ? (
+                    <div className="space-y-0.5">
+                      <div className="text-cc-lime">+1 free{(r as any).crewMemberName ? `: ${(r as any).crewMemberName}` : ''}</div>
+                      {((r as any).extraSpectators || 0) > 0 && <div className="text-cc-magenta">+{(r as any).extraSpectators} paid</div>}
+                    </div>
+                  ) : '—'}
+                </td>
                 <td className="p-3">
                   <span className={`px-2 py-0.5 rounded text-xs ${r.paymentStatus==='paid' ? 'bg-cc-lime/20 text-cc-lime' : 'bg-muted text-muted-foreground'}`}>
                     {r.paymentStatus}
@@ -337,7 +345,7 @@ function RegistrationsPanel() {
                 </td>
               </tr>
             ))}
-            {!isLoading && (data || []).length === 0 && <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">No registrations yet.</td></tr>}
+            {!isLoading && (data || []).length === 0 && <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">No registrations yet.</td></tr>}
           </tbody>
         </table>
       </div>

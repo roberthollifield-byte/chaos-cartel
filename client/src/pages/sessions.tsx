@@ -63,7 +63,7 @@ function SessionRow({ event }: { event: EventAvailability }) {
         {event.description && <p className="mt-4 text-muted-foreground max-w-2xl">{event.description}</p>}
         <div className="mt-5 flex flex-wrap gap-3 text-xs font-mono">
           <span className="px-3 py-1.5 rounded-full bg-cc-lime/15 text-cc-lime border border-cc-lime/40">
-            DRIVER ${(event.driverPriceCents/100).toFixed(0)} · {event.driverRemaining} left
+            DRIVER ${(event.driverPriceCents/100).toFixed(0)} · {event.driverRemaining} left · +1 CREW FREE
           </span>
           <span className="px-3 py-1.5 rounded-full bg-cc-magenta/15 text-cc-magenta border border-cc-magenta/40">
             RIDE-ALONG ${(event.rideAlongPriceCents/100).toFixed(0)} · {event.rideAlongRemaining} left
