@@ -1104,5 +1104,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ ok: true });
   });
 
+  // Background sweep: any paid registration without email_sent_at gets auto-resent.
+  // Runs every 5 minutes; safety net for cases where the webhook fires but the initial
+  // send failed (Resend outage, transient network error, etc.).
+  async function sweepUnsentConfirmationEmails() {
+    try {
+      const all = await storage.listRegistrations();
+      const unsent = all.filter((r: any) => r.paymentStatus === "paid" && !r.emailSentAt);
+      if (unsent.length === 0) return;
+      console.log(`[email-sweep] Found ${unsent.length} paid registration(s) without a sent confirmation email; resending`);
+      for (const r of unsent) {
+        try {
+          await issueTicketAndEmail(r.id);
+        } catch (err) {
+          console.error(`[email-sweep] Failed to send for reg ${r.id}:`, err);
+        }
+      }
+    } catch (err) {
+      console.error("[email-sweep] Sweep failed:", err);
+    }
+  }
+  // Initial run 30 s after boot (let Railway settle), then every 5 min.
+  setTimeout(sweepUnsentConfirmationEmails, 30_000);
+  setInterval(sweepUnsentConfirmationEmails, 5 * 60 * 1000);
+
   return httpServer;
 }
