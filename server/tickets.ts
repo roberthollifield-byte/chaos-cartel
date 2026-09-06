@@ -53,6 +53,14 @@ export async function sendConfirmationEmail(opts: {
   eventLocation: string;
   code: string;
   baseUrl: string;
+  // Optional pricing breakdown (driver bookings with crew add-ons)
+  basePriceCents?: number;
+  crewMemberName?: string | null;
+  extraSpectators?: number;
+  extraSpectatorPriceCents?: number;
+  extraRideAlongs?: number;
+  extraRideAlongPriceCents?: number;
+  totalPaidCents?: number;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
@@ -63,7 +71,7 @@ export async function sendConfirmationEmail(opts: {
   try {
     const qrDataUrl = await ticketQrDataUrl(opts.code, opts.baseUrl);
     const ticketLabel = opts.ticketType === "ride_along" ? "RIDE-ALONG" : opts.ticketType.toUpperCase();
-    const html = confirmationEmailHtml({ ...opts, qrDataUrl, ticketLabel });
+    const html = confirmationEmailHtml({ ...opts, qrDataUrl, ticketLabel } as any);
     // Embed QR as inline attachment (CID) for robust client rendering
     const qrPng = await ticketQrPng(opts.code, opts.baseUrl);
     const body = {
@@ -98,17 +106,56 @@ export async function sendConfirmationEmail(opts: {
   }
 }
 
+function money(cents: number): string {
+  return `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
+}
+
 function confirmationEmailHtml(o: {
   firstName: string;
   lastName: string;
   ticketLabel: string;
+  ticketType: string;
   eventTitle: string;
   eventSubtitle: string | null;
   eventDate: string;
   eventLocation: string;
   code: string;
   qrDataUrl: string;
+  basePriceCents?: number;
+  crewMemberName?: string | null;
+  extraSpectators?: number;
+  extraSpectatorPriceCents?: number;
+  extraRideAlongs?: number;
+  extraRideAlongPriceCents?: number;
+  totalPaidCents?: number;
 }) {
+  const isDriver = o.ticketType === "driver";
+  const extraSpec = o.extraSpectators || 0;
+  const extraRA = o.extraRideAlongs || 0;
+  const hasAnyCrew = isDriver && (!!o.crewMemberName || extraSpec > 0 || extraRA > 0);
+  const showBreakdown = isDriver && o.basePriceCents !== undefined && (hasAnyCrew || (o.totalPaidCents || 0) > 0);
+
+  const row = (label: string, value: string, color = "#fff") => `
+        <tr>
+          <td style="padding:6px 0;font-size:14px;color:#bbb;">${escapeHtml(label)}</td>
+          <td style="padding:6px 0;font-size:14px;color:${color};text-align:right;font-weight:600;">${escapeHtml(value)}</td>
+        </tr>`;
+
+  const breakdownBlock = showBreakdown ? `
+    <div style="background:#111;border:1px solid #222;border-radius:12px;padding:24px;margin:0 0 24px;">
+      <div style="font-family:monospace;font-size:11px;letter-spacing:2px;color:#00ffa3;margin-bottom:12px;">// YOUR CREW</div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+        ${row("Driver Entry", money(o.basePriceCents || 0))}
+        <tr><td colspan="2" style="padding:6px 0;font-size:14px;color:#00ffa3;">+ 1 Free Crew Member${o.crewMemberName ? ` — ${escapeHtml(o.crewMemberName)}` : ""} <span style="color:#666;">(included)</span></td></tr>
+        ${extraSpec > 0 ? row(`Extra Spectator × ${extraSpec}`, money(extraSpec * (o.extraSpectatorPriceCents || 0))) : ""}
+        ${extraRA > 0 ? row(`Extra Ride-Along × ${extraRA}`, money(extraRA * (o.extraRideAlongPriceCents || 0))) : ""}
+        <tr><td colspan="2" style="padding:12px 0 0;border-top:1px solid #222;"></td></tr>
+        ${row("Total Paid", money(o.totalPaidCents || 0), "#00ffa3")}
+      </table>
+      ${hasAnyCrew ? `<div style="font-size:12px;color:#888;margin-top:14px;line-height:1.5;">Bring your crew to the gate with you — they don't need separate tickets. This confirmation covers everyone above.</div>` : ""}
+    </div>
+  ` : "";
+
   return `<!doctype html>
 <html>
 <body style="margin:0;padding:0;background:#0a0a0a;color:#e6e6e6;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif;">
@@ -131,6 +178,8 @@ function confirmationEmailHtml(o: {
         <div style="font-size:16px;font-weight:700;color:#fff;">${o.ticketLabel}</div>
       </div>
     </div>
+
+    ${breakdownBlock}
 
     <div style="background:#fff;border-radius:12px;padding:20px;text-align:center;margin:0 0 16px;">
       <div style="font-family:monospace;font-size:11px;letter-spacing:2px;color:#000;margin-bottom:12px;">// SHOW AT GATE</div>

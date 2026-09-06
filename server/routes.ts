@@ -758,6 +758,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       eventLocation: `${event.venue ? event.venue + " \u2014 " : ""}${event.location}`,
       code,
       baseUrl,
+      // Pricing breakdown for drivers with crew add-ons
+      basePriceCents: event.driverPriceCents,
+      crewMemberName: (reg as any).crewMemberName || null,
+      extraSpectators: (reg as any).extraSpectators || 0,
+      extraSpectatorPriceCents: event.spectatorPriceCents,
+      extraRideAlongs: (reg as any).extraRideAlongs || 0,
+      extraRideAlongPriceCents: event.rideAlongPriceCents,
+      totalPaidCents: reg.amountPaidCents,
     });
   }
 
