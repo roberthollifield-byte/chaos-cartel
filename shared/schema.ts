@@ -89,7 +89,8 @@ export const registrations = pgTable("registrations", {
   checkedInBy: text("checked_in_by"), // admin username who scanned
   // Driver crew add-ons: 1 free crew guest per driver + 0..N paid extras at spectator price
   crewMemberName: text("crew_member_name"), // free bring-a-friend, driver only
-  extraSpectators: integer("extra_spectators").notNull().default(0), // paid extras (spectator rate)
+  extraSpectators: integer("extra_spectators").notNull().default(0), // paid extra spectator seats
+  extraRideAlongs: integer("extra_ride_alongs").notNull().default(0), // paid extra ride-along seats
   createdAt: bigint("created_at", { mode: "number" }).notNull().default(0),
 });
 
@@ -132,6 +133,7 @@ export const bookingPayloadSchema = z.object({
   // Driver crew add-ons
   crewMemberName: z.string().max(80).optional(),
   extraSpectators: z.number().int().min(0).max(4).optional(),
+  extraRideAlongs: z.number().int().min(0).max(4).optional(),
   waiverSignatureName: z.string().min(1),
   waiverAgreed: z.literal(true),
   inviteCode: z.string().optional(),

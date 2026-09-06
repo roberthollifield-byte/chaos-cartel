@@ -334,7 +334,8 @@ function RegistrationsPanel() {
                   {r.ticketType === 'driver' ? (
                     <div className="space-y-0.5">
                       <div className="text-cc-lime">+1 free{(r as any).crewMemberName ? `: ${(r as any).crewMemberName}` : ''}</div>
-                      {((r as any).extraSpectators || 0) > 0 && <div className="text-cc-magenta">+{(r as any).extraSpectators} paid</div>}
+                      {((r as any).extraSpectators || 0) > 0 && <div className="text-cc-cyan">+{(r as any).extraSpectators} spec</div>}
+                      {((r as any).extraRideAlongs || 0) > 0 && <div className="text-cc-magenta">+{(r as any).extraRideAlongs} ride-along</div>}
                     </div>
                   ) : '—'}
                 </td>

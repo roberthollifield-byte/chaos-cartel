@@ -202,6 +202,7 @@ function RegistrationForm({
     inviteCode: "",
     crewMemberName: "",
     extraSpectators: 0,
+    extraRideAlongs: 0,
   });
   const [errors, setErrors] = useState<Record<string,string>>({});
 
@@ -260,6 +261,7 @@ function RegistrationForm({
       };
       payload.crewMemberName = form.crewMemberName?.trim() || undefined;
       payload.extraSpectators = Math.max(0, Math.min(4, Number(form.extraSpectators) || 0));
+      payload.extraRideAlongs = Math.max(0, Math.min(4, Number(form.extraRideAlongs) || 0));
     }
     onSubmit(payload);
   }
@@ -305,49 +307,39 @@ function RegistrationForm({
                 </div>
               </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field
-                label="Crew member name (optional)"
-                value={form.crewMemberName}
-                onChange={(v: string)=>set("crewMemberName",v)}
-                data-testid="input-crewMemberName"
-              />
-              <div>
-                <label className="block text-xs font-mono tracking-widest text-cc-cyan mb-1.5">
-                  ADDITIONAL CREW (${(event.spectatorPriceCents/100).toFixed(0)} EACH)
-                </label>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={()=>set("extraSpectators", Math.max(0, (form.extraSpectators||0)-1))}
-                    disabled={form.extraSpectators <= 0}
-                    className="w-11 h-11 rounded-md border-2 border-cc-purple/40 text-cc-cyan hover:border-cc-cyan disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
-                    data-testid="button-extras-decrement"
-                  >
-                    <Minus size={18} />
-                  </button>
-                  <div
-                    className="flex-1 text-center px-3 py-2.5 rounded-md bg-background border-2 border-cc-purple/40 text-cc-lime font-display font-extrabold text-2xl italic"
-                    data-testid="text-extras-count"
-                  >
-                    {form.extraSpectators || 0}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={()=>set("extraSpectators", Math.min(4, (form.extraSpectators||0)+1))}
-                    disabled={form.extraSpectators >= 4}
-                    className="w-11 h-11 rounded-md border-2 border-cc-purple/40 text-cc-cyan hover:border-cc-cyan disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
-                    data-testid="button-extras-increment"
-                  >
-                    <Plus size={18} />
-                  </button>
-                </div>
-                {form.extraSpectators > 0 && (
-                  <div className="mt-2 text-xs font-mono text-cc-magenta">
-                    +${((form.extraSpectators * event.spectatorPriceCents)/100).toFixed(0)} for {form.extraSpectators} extra {form.extraSpectators === 1 ? "guest" : "guests"}
-                  </div>
-                )}
+            <Field
+              label="Free crew member name (optional)"
+              value={form.crewMemberName}
+              onChange={(v: string)=>set("crewMemberName",v)}
+              data-testid="input-crewMemberName"
+            />
+            <div className="mt-5">
+              <div className="text-xs font-mono tracking-widest text-cc-cyan mb-2">ADDITIONAL GUESTS (OPTIONAL)</div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <CrewStepper
+                  label="Extra Spectator"
+                  priceCents={event.spectatorPriceCents}
+                  accent="cc-cyan"
+                  value={form.extraSpectators || 0}
+                  max={4}
+                  onChange={(v: number)=>set("extraSpectators", v)}
+                  testIdPrefix="extras-spectator"
+                />
+                <CrewStepper
+                  label="Extra Ride-Along"
+                  priceCents={event.rideAlongPriceCents}
+                  accent="cc-magenta"
+                  value={form.extraRideAlongs || 0}
+                  max={4}
+                  onChange={(v: number)=>set("extraRideAlongs", v)}
+                  testIdPrefix="extras-ridealong"
+                />
               </div>
+              {(form.extraSpectators > 0 || form.extraRideAlongs > 0) && (
+                <div className="mt-3 text-xs font-mono text-cc-magenta">
+                  +${((form.extraSpectators * event.spectatorPriceCents + form.extraRideAlongs * event.rideAlongPriceCents)/100).toFixed(0)} for {form.extraSpectators + form.extraRideAlongs} extra {(form.extraSpectators + form.extraRideAlongs) === 1 ? "guest" : "guests"}
+                </div>
+              )}
             </div>
           </FormSection>
 
@@ -468,11 +460,16 @@ function RegistrationForm({
         <div>
           <div className="text-xs font-mono tracking-widest text-muted-foreground">TOTAL DUE AT CHECKOUT</div>
           <div className="font-display font-extrabold text-4xl italic text-cc-lime text-shadow-neon-lime" data-testid="text-total">
-            ${((basePriceCents + (ticketType === "driver" ? (Number(form.extraSpectators)||0) * event.spectatorPriceCents : 0))/100).toFixed(0)}
+            ${((basePriceCents
+              + (ticketType === "driver" ? (Number(form.extraSpectators)||0) * event.spectatorPriceCents : 0)
+              + (ticketType === "driver" ? (Number(form.extraRideAlongs)||0) * event.rideAlongPriceCents : 0)
+            )/100).toFixed(0)}
           </div>
-          {ticketType === "driver" && form.extraSpectators > 0 && (
+          {ticketType === "driver" && (form.extraSpectators > 0 || form.extraRideAlongs > 0) && (
             <div className="mt-1 text-xs font-mono text-muted-foreground">
-              ${(basePriceCents/100).toFixed(0)} entry + {form.extraSpectators} × ${(event.spectatorPriceCents/100).toFixed(0)} crew
+              ${(basePriceCents/100).toFixed(0)} entry
+              {form.extraSpectators > 0 && ` + ${form.extraSpectators} × $${(event.spectatorPriceCents/100).toFixed(0)} spec`}
+              {form.extraRideAlongs > 0 && ` + ${form.extraRideAlongs} × $${(event.rideAlongPriceCents/100).toFixed(0)} ride-along`}
             </div>
           )}
         </div>
@@ -486,6 +483,53 @@ function RegistrationForm({
         </button>
       </div>
     </form>
+  );
+}
+
+function CrewStepper({
+  label, priceCents, accent, value, max, onChange, testIdPrefix,
+}: {
+  label: string;
+  priceCents: number;
+  accent: string;
+  value: number;
+  max: number;
+  onChange: (v: number) => void;
+  testIdPrefix: string;
+}) {
+  return (
+    <div className={`p-3 rounded-lg border-2 border-${accent}/40 bg-background/40`}>
+      <div className="flex items-center justify-between mb-2">
+        <div className={`text-sm font-display font-extrabold italic text-${accent}`}>{label}</div>
+        <div className="text-xs font-mono text-muted-foreground">${(priceCents/100).toFixed(0)}/ea</div>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={()=>onChange(Math.max(0, value-1))}
+          disabled={value <= 0}
+          className={`w-11 h-11 rounded-md border-2 border-${accent}/40 text-${accent} hover:border-${accent} disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center`}
+          data-testid={`button-${testIdPrefix}-decrement`}
+        >
+          <Minus size={18} />
+        </button>
+        <div
+          className={`flex-1 text-center px-3 py-2.5 rounded-md bg-background border-2 border-${accent}/40 text-cc-lime font-display font-extrabold text-2xl italic`}
+          data-testid={`text-${testIdPrefix}-count`}
+        >
+          {value}
+        </div>
+        <button
+          type="button"
+          onClick={()=>onChange(Math.min(max, value+1))}
+          disabled={value >= max}
+          className={`w-11 h-11 rounded-md border-2 border-${accent}/40 text-${accent} hover:border-${accent} disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center`}
+          data-testid={`button-${testIdPrefix}-increment`}
+        >
+          <Plus size={18} />
+        </button>
+      </div>
+    </div>
   );
 }
 

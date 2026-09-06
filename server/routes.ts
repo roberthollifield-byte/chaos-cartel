@@ -196,6 +196,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const isDriver = payload.ticketType === "driver";
       const crewMemberName = isDriver ? (payload.crewMemberName?.trim() || null) : null;
       const extraSpectators = isDriver ? Math.max(0, Math.min(4, payload.extraSpectators ?? 0)) : 0;
+      const extraRideAlongs = isDriver ? Math.max(0, Math.min(4, payload.extraRideAlongs ?? 0)) : 0;
 
       // Capacity check
       let priceCents = 0;
@@ -205,11 +206,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!payload.techInspection || !payload.experienceLevel || !payload.carMake) {
           return res.status(400).json({ message: "Driver registration requires car details, tech inspection, and experience level" });
         }
-        // Paid extras also need physical spectator capacity. The 1 free crew guest is a bring-a-friend, not a ticketed seat.
+        // Paid extras need actual capacity. The 1 free crew guest is a bring-a-friend, not a ticketed seat.
         if (extraSpectators > 0 && event.spectatorRemaining < extraSpectators) {
-          return res.status(400).json({ message: `Only ${event.spectatorRemaining} spectator spots left \u2014 reduce extra crew members.` });
+          return res.status(400).json({ message: `Only ${event.spectatorRemaining} spectator spots left \u2014 reduce extra spectators.` });
         }
-        priceCents = event.driverPriceCents + (extraSpectators * event.spectatorPriceCents);
+        if (extraRideAlongs > 0 && event.rideAlongRemaining < extraRideAlongs) {
+          return res.status(400).json({ message: `Only ${event.rideAlongRemaining} ride-along spots left \u2014 reduce extra ride-alongs.` });
+        }
+        priceCents = event.driverPriceCents
+          + (extraSpectators * event.spectatorPriceCents)
+          + (extraRideAlongs * event.rideAlongPriceCents);
         itemName = `${event.title} \u2014 Driver Entry`;
       } else if (payload.ticketType === "ride_along") {
         if (event.rideAlongRemaining <= 0) return res.status(400).json({ message: "Ride-along spots sold out" });
@@ -239,6 +245,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         experienceLevel: payload.experienceLevel || null,
         crewMemberName,
         extraSpectators,
+        extraRideAlongs,
         waiverSigned: true,
         waiverSignedAt: Math.floor(Date.now() / 1000),
         waiverSignatureName: payload.waiverSignatureName,
@@ -282,17 +289,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           "metadata[event_id]": event.id,
           "metadata[ticket_type]": payload.ticketType,
           "metadata[extra_spectators]": extraSpectators,
+          "metadata[extra_ride_alongs]": extraRideAlongs,
           "metadata[kind]": "registration",
           success_url: `${baseUrl}/#/thanks?type=registration&id=${reg.id}`,
           cancel_url: `${baseUrl}/#/sessions/${event.slug}?canceled=1`,
           "payment_intent_data[metadata][registration_id]": reg.id,
         };
+        let liIdx = 1;
         if (isDriver && extraSpectators > 0) {
-          stripeParams["line_items[1][price_data][currency]"] = "usd";
-          stripeParams["line_items[1][price_data][unit_amount]"] = event.spectatorPriceCents;
-          stripeParams["line_items[1][price_data][product_data][name]"] = `${event.title} \u2014 Extra Crew Member`;
-          stripeParams["line_items[1][price_data][product_data][description]"] = `Additional guest at spectator rate`;
-          stripeParams["line_items[1][quantity]"] = extraSpectators;
+          stripeParams[`line_items[${liIdx}][price_data][currency]`] = "usd";
+          stripeParams[`line_items[${liIdx}][price_data][unit_amount]`] = event.spectatorPriceCents;
+          stripeParams[`line_items[${liIdx}][price_data][product_data][name]`] = `${event.title} \u2014 Extra Spectator`;
+          stripeParams[`line_items[${liIdx}][price_data][product_data][description]`] = `Additional guest at spectator rate`;
+          stripeParams[`line_items[${liIdx}][quantity]`] = extraSpectators;
+          liIdx++;
+        }
+        if (isDriver && extraRideAlongs > 0) {
+          stripeParams[`line_items[${liIdx}][price_data][currency]`] = "usd";
+          stripeParams[`line_items[${liIdx}][price_data][unit_amount]`] = event.rideAlongPriceCents;
+          stripeParams[`line_items[${liIdx}][price_data][product_data][name]`] = `${event.title} \u2014 Extra Ride-Along`;
+          stripeParams[`line_items[${liIdx}][price_data][product_data][description]`] = `Additional guest with ride-along access`;
+          stripeParams[`line_items[${liIdx}][quantity]`] = extraRideAlongs;
+          liIdx++;
         }
         const session = await stripeCall("/checkout/sessions", stripeParams);
         // Save session id on the registration
@@ -812,7 +830,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const rows = await storage.listRegistrations(eventId);
     const headers = [
       "id","event_id","ticket_type","first_name","last_name","email","phone",
-      "car","experience","crew_member_name","extra_spectators","waiver_signed","waiver_signature","amount_paid_cents",
+      "car","experience","crew_member_name","extra_spectators","extra_ride_alongs","waiver_signed","waiver_signature","amount_paid_cents",
       "payment_status","created_at",
     ];
     const csv = [
@@ -829,6 +847,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         r.experienceLevel || "",
         `"${(r as any).crewMemberName || ""}"`,
         (r as any).extraSpectators || 0,
+        (r as any).extraRideAlongs || 0,
         r.waiverSigned ? "yes" : "no",
         `"${r.waiverSignatureName || ""}"`,
         r.amountPaidCents,
