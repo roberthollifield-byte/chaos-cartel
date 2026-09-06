@@ -20,6 +20,11 @@ const STRIPE_API_LIVE = "https://api.stripe.com/v1";
 // "preview mode" — the booking flow returns a fake checkout URL that lands on
 // /#/thanks so the UX can be walked end-to-end without real payments.
 const APP_BASE_URL = process.env.APP_BASE_URL || "http://localhost:5000";
+// Public URL used for Stripe redirects. NEVER falls back to req.host because
+// Railway health checks / internal calls can present a Host of "localhost" and
+// send real customers to a broken localhost URL after checkout.
+const PUBLIC_BASE_URL = process.env.APP_BASE_URL
+  || (process.env.NODE_ENV === "production" ? "https://chaoscartel.net" : "http://localhost:5000");
 const STRIPE_MODE: "live" | "preview" = process.env.STRIPE_SECRET_KEY ? "live" : "preview";
 const IS_STRIPE_CONFIGURED = true; // always show checkout button; preview mode fakes it
 
@@ -259,8 +264,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         amountPaidCents: 0,
       });
 
-      // Determine base URL: use APP_BASE_URL when set, else derive from request
-      const baseUrl = process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
+      // Use PUBLIC_BASE_URL — never derive from request host (see comment on constant).
+      const baseUrl = PUBLIC_BASE_URL;
 
       let checkoutUrl: string;
       // Preview mode: skip Stripe entirely and drop the user straight on /#/thanks.
@@ -297,7 +302,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           "metadata[extra_spectators]": extraSpectators,
           "metadata[extra_ride_alongs]": extraRideAlongs,
           "metadata[kind]": "registration",
-          success_url: `${baseUrl}/#/thanks?type=registration&id=${reg.id}`,
+          success_url: `${baseUrl}/#/thanks?type=registration&id=${reg.id}&sid={CHECKOUT_SESSION_ID}`,
           cancel_url: `${baseUrl}/#/sessions/${event.slug}?canceled=1`,
           "payment_intent_data[metadata][registration_id]": reg.id,
         };
@@ -370,7 +375,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         amountPaidCents: 0,
       });
 
-      const baseUrl = process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
+      const baseUrl = PUBLIC_BASE_URL;
       const sizeSuffix = payload.size ? ` (${payload.size})` : "";
 
       // Flat-rate shipping. Small flat items (stickers / decals) ship in a stamped envelope for $3.
@@ -413,7 +418,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         "metadata[order_id]": order.id,
         "metadata[kind]": "merch",
         "metadata[shipping_cents]": shippingCents,
-        success_url: `${baseUrl}/#/thanks?type=merch&id=${order.id}`,
+        success_url: `${baseUrl}/#/thanks?type=merch&id=${order.id}&sid={CHECKOUT_SESSION_ID}`,
         cancel_url: `${baseUrl}/#/merch?canceled=1`,
       });
 
@@ -503,7 +508,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         category: product.category,
       })));
 
-      const baseUrl = process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
+      const baseUrl = PUBLIC_BASE_URL;
 
       if (STRIPE_MODE === "preview") {
         const { db } = await import("./storage");
@@ -534,7 +539,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         "metadata[kind]": "merch_cart",
         "metadata[shipping_cents]": ship.shippingCents,
         "metadata[item_count]": payload.items.reduce((s, i) => s + i.quantity, 0),
-        success_url: `${baseUrl}/#/thanks?type=merch&id=${order.id}`,
+        success_url: `${baseUrl}/#/thanks?type=merch&id=${order.id}&sid={CHECKOUT_SESSION_ID}`,
         cancel_url: `${baseUrl}/#/cart?canceled=1`,
       };
       itemsResolved.forEach(({ item, product }, idx) => {
@@ -730,7 +735,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const code = req.params.code;
       const reg = await storage.getRegistrationByConfirmationCode(code);
       if (!reg) return res.status(404).send("not found");
-      const baseUrl = process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
+      const baseUrl = PUBLIC_BASE_URL;
       const png = await ticketQrPng(code, baseUrl);
       res.setHeader("Content-Type", "image/png");
       res.setHeader("Cache-Control", "public, max-age=3600");
@@ -748,7 +753,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const code = await ensureConfirmationCode(reg);
     const event = await storage.getEventById(reg.eventId);
     if (!event) return;
-    const baseUrl = process.env.APP_BASE_URL || "https://chaoscartel.net";
+    const baseUrl = PUBLIC_BASE_URL;
     const eventDate = new Date(event.startsAt * 1000).toLocaleString("en-US", {
       weekday: "long", month: "long", day: "numeric", year: "numeric",
       hour: "numeric", minute: "2-digit", timeZone: "America/New_York", timeZoneName: "short",
@@ -1036,7 +1041,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const refreshed = await storage.listRegistrations(eventId);
       const paidRefreshed = refreshed.filter(r => r.paymentStatus === "paid" || r.paymentStatus === "preview");
-      const baseUrl = process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
+      const baseUrl = PUBLIC_BASE_URL;
       const pdf = await generateRosterPdf({
         event: { title: event.title, subtitle: event.subtitle, startsAt: event.startsAt, location: event.location, venue: event.venue },
         registrations: paidRefreshed,
