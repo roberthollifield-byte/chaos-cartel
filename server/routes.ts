@@ -82,6 +82,11 @@ function requireAdmin(req: Request, res: Response, next: NextFunction) {
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+  // Railway terminates TLS at its edge proxy and forwards HTTP internally.
+  // Without trust proxy, Express thinks requests are HTTP and refuses to set
+  // Secure cookies, breaking admin login.
+  app.set('trust proxy', 1);
+
   // Sessions (in-memory; fine for single-node Railway service)
   const MStore = MemoryStore(session);
   app.use(session({
@@ -92,6 +97,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     cookie: {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
       maxAge: 7 * 24 * 3600 * 1000,
     },
   }));
