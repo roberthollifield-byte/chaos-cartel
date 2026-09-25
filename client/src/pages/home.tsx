@@ -180,7 +180,7 @@ function SessionCard({ event, accent }: { event: EventAvailability; accent: "lim
           data-testid={`button-register-${event.slug}`}
           className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-md btn-neon-lime text-sm"
         >
-          REGISTER →
+          PURCHASE TICKETS →
         </Link>
       </div>
     </div>
