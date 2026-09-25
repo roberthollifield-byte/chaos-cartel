@@ -46,7 +46,7 @@ export default function HomePage() {
                 data-testid="button-register-practice"
                 className="inline-flex items-center gap-2 px-7 py-4 rounded-md btn-neon-lime"
               >
-                <Zap size={20} className="fill-black" /> REGISTER FOR PRACTICE
+                <Zap size={20} className="fill-black" /> PURCHASE TICKETS
               </Link>
               <Link
                 href="/sessions"
