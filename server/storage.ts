@@ -459,12 +459,12 @@ async function applyEventConfig() {
   // Delete Round 3 if it exists (invite-only two-round schedule)
   await db.delete(events).where(eq(events.slug, "round-3-night-slide"));
 
-  // Upsert Round 1: Sat Sep 26, 2026 10 AM – 8 PM ET, Private Practice
+  // Upsert Round 1: Sat Sep 26, 2026 10 AM – 8 PM ET, Open Practice (no invite code)
   await db.insert(events).values({
     slug: "round-1-forest-city",
     title: "ROUND 1",
-    subtitle: "Private Practice",
-    description: "Invite-only practice day. All-day open track for our crew. Ride-alongs by arrangement. Spectators by invite.",
+    subtitle: "Open Practice",
+    description: "Open practice day. All-day open track. Drivers, ride-alongs, and spectators welcome.",
     location: "Forest City, NC",
     venue: "Chaos Cartel Track",
     startsAt: 1790431200, // Sat Sep 26 2026 10:00 AM EDT
@@ -477,21 +477,21 @@ async function applyEventConfig() {
     spectatorSlots: 45,
     status: "published",
     heroImageUrl: null,
-    inviteCode: "TIRE-FIRE-926",
+    inviteCode: null,
     createdAt: Math.floor(Date.now() / 1000),
   }).onConflictDoUpdate({
     target: events.slug,
     set: {
       title: "ROUND 1",
-      subtitle: "Private Practice",
-      description: "Invite-only practice day. All-day open track for our crew. Ride-alongs by arrangement. Spectators by invite.",
+      subtitle: "Open Practice",
+      description: "Open practice day. All-day open track. Drivers, ride-alongs, and spectators welcome.",
       startsAt: 1790431200,
       endsAt: 1790467200,
       driverSlots: 15,
       rideAlongSlots: 15,
       spectatorSlots: 45,
       status: "published",
-      inviteCode: "TIRE-FIRE-926",
+      inviteCode: null,
     },
   });
 
@@ -531,7 +531,7 @@ async function applyEventConfig() {
     },
   });
 
-  console.log("[config] Events synced (2 published rounds, invite-only)");
+  console.log("[config] Events synced (Round 1 open, Round 2 invite-only)");
 }
 
 // ============ PRODUCT CATALOG APPLY ============
