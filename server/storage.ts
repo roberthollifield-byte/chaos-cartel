@@ -495,12 +495,12 @@ async function applyEventConfig() {
     },
   });
 
-  // Upsert Round 2: Sat Oct 17, 2026 10 AM – 8 PM ET, Private Practice
+  // Upsert Round 2: Sat Oct 17, 2026 10 AM – 8 PM ET, Open Practice (no invite code)
   await db.insert(events).values({
     slug: "round-2-seat-time-saturday",
     title: "ROUND 2",
-    subtitle: "Private Practice",
-    description: "Invite-only practice day. All-day open track for our crew. Ride-alongs by arrangement. Spectators by invite.",
+    subtitle: "Open Practice",
+    description: "Open practice day. All-day open track. Drivers, ride-alongs, and spectators welcome.",
     location: "Forest City, NC",
     venue: "Chaos Cartel Track",
     startsAt: 1792245600, // Sat Oct 17 2026 10:00 AM EDT
@@ -513,25 +513,25 @@ async function applyEventConfig() {
     spectatorSlots: 45,
     status: "published",
     heroImageUrl: null,
-    inviteCode: "APEX-CULT-1017",
+    inviteCode: null,
     createdAt: Math.floor(Date.now() / 1000),
   }).onConflictDoUpdate({
     target: events.slug,
     set: {
       title: "ROUND 2",
-      subtitle: "Private Practice",
-      description: "Invite-only practice day. All-day open track for our crew. Ride-alongs by arrangement. Spectators by invite.",
+      subtitle: "Open Practice",
+      description: "Open practice day. All-day open track. Drivers, ride-alongs, and spectators welcome.",
       startsAt: 1792245600,
       endsAt: 1792281600,
       driverSlots: 15,
       rideAlongSlots: 15,
       spectatorSlots: 45,
       status: "published",
-      inviteCode: "APEX-CULT-1017",
+      inviteCode: null,
     },
   });
 
-  console.log("[config] Events synced (Round 1 open, Round 2 invite-only)");
+  console.log("[config] Events synced (2 published rounds, open registration)");
 }
 
 // ============ PRODUCT CATALOG APPLY ============
