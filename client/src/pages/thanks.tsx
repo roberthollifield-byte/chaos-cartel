@@ -4,6 +4,7 @@ import { CheckCircle2, Zap, Package } from "lucide-react";
 import QRCode from "qrcode";
 import { Shell } from "@/components/brand/Shell";
 import { clearCart } from "@/lib/cart";
+import { TRACK_ADDRESS_LINE1, TRACK_ADDRESS_LINE2, TRACK_MAPS_URL } from "@shared/venue";
 
 interface OrderInfo {
   id: number;
@@ -163,6 +164,12 @@ export default function ThanksPage() {
                     )}
                   </div>
                 )}
+                <div className="mt-4 pt-4 border-t border-black/10 text-sm text-black/80" data-testid="ticket-address">
+                  <div className="font-mono text-[10px] tracking-widest text-black/60 mb-1">// WHERE TO GO</div>
+                  <div className="font-bold">{TRACK_ADDRESS_LINE1}</div>
+                  <div>{TRACK_ADDRESS_LINE2}</div>
+                  <a href={TRACK_MAPS_URL} target="_blank" rel="noopener noreferrer" className="inline-block mt-2 text-xs underline text-black/70">Get directions</a>
+                </div>
               </div>
             ) : (
               <div className="mx-auto max-w-sm rounded-2xl border border-white/10 p-6 text-sm text-foreground/60">

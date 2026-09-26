@@ -4,6 +4,7 @@ import QRCode from "qrcode";
 import PDFDocument from "pdfkit";
 import { storage } from "./storage";
 import type { Registration } from "@shared/schema";
+import { TRACK_ADDRESS_LINE1, TRACK_ADDRESS_LINE2, TRACK_MAPS_URL } from "@shared/venue";
 
 // Confirmation code format: CC-XXXX-YYYY (base32, no ambiguous chars)
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I/L
@@ -190,6 +191,12 @@ function confirmationEmailHtml(o: {
     <p style="color:#aaa;font-size:13px;line-height:1.6;text-align:center;margin:24px 0 0;">
       Save this email or screenshot the QR — that's your ticket. If you lose it, reply to this email with your name and we'll resend.
     </p>
+    <div style="background:#111;border:1px solid #222;border-radius:12px;padding:20px;text-align:center;margin:24px 0 0;">
+      <div style="font-family:monospace;font-size:11px;letter-spacing:2px;color:#00e5ff;margin-bottom:8px;">// WHERE TO GO</div>
+      <div style="font-size:16px;font-weight:700;color:#fff;">${TRACK_ADDRESS_LINE1}</div>
+      <div style="font-size:14px;color:#bbb;margin-top:2px;">${TRACK_ADDRESS_LINE2}</div>
+      <a href="${TRACK_MAPS_URL}" style="display:inline-block;margin-top:12px;font-size:13px;color:#00ffa3;text-decoration:underline;">Get directions</a>
+    </div>
     <p style="color:#666;font-size:12px;text-align:center;margin:24px 0 0;">chaoscartel.net</p>
   </div>
 </body>
