@@ -32,8 +32,8 @@ const TICKET_META: Record<TicketType, { label: string; color: string; needsWaive
   spectator: {
     label: "SPECTATOR",
     color: "cc-cyan",
-    needsWaiver: false,
-    description: "Bring a chair, bring earplugs. Watch the crew get sideways all day.",
+    needsWaiver: true,
+    description: "Bring a chair, bring earplugs. Watch the crew get sideways all day. Requires a signed spectator waiver.",
   },
 };
 
@@ -400,7 +400,7 @@ function RegistrationForm({
       )}
 
       {meta.needsWaiver && (
-        <FormSection title={ticketType === "ride_along" ? "RIDE-ALONG DISCLAIMER + WAIVER" : "LIABILITY WAIVER"} accent="cc-magenta" icon={<AlertTriangle size={18} />}>
+        <FormSection title={ticketType === "ride_along" ? "RIDE-ALONG DISCLAIMER + WAIVER" : ticketType === "spectator" ? "SPECTATOR WAIVER" : "LIABILITY WAIVER"} accent="cc-magenta" icon={<AlertTriangle size={18} />}>
           {ticketType === "ride_along" && (
             <div className="mb-4 p-4 rounded-lg bg-destructive/15 border border-destructive/50 text-sm">
               <strong className="text-cc-hot-pink">Ride-Along Disclaimer.</strong> You are voluntarily riding in a
@@ -409,6 +409,18 @@ function RegistrationForm({
               consent) and will follow all crew instructions.
             </div>
           )}
+          {ticketType === "spectator" ? (
+          <div className="p-4 rounded-lg bg-card border border-cc-purple/30 max-h-56 overflow-y-auto text-sm text-muted-foreground space-y-2" data-testid="text-spectator-waiver">
+            <p><strong>ASSUMPTION OF RISK.</strong> Drifting is a dangerous motorsport. Even in spectator areas, you may be exposed to cars losing control, flying debris (tire pieces, rocks, parts), tire smoke, loud noise, and moving vehicles in the pit and parking areas. Injury and death are possible. You voluntarily accept these risks.</p>
+            <p><strong>STAY IN SPECTATOR AREAS.</strong> You will stay behind barriers and in marked spectator zones, never enter the track or hot pit, and follow all instructions from Chaos Cartel crew, marshals, and track staff. You may be removed without refund for ignoring safety rules.</p>
+            <p><strong>RELEASE.</strong> You release Chaos Cartel, FC Crew, the track owner, all crew, volunteers, and participants from any claim arising out of your attendance, whether from negligence or otherwise, to the maximum extent permitted by law.</p>
+            <p><strong>MEDICAL.</strong> You authorize emergency medical treatment if required. Hearing protection is strongly recommended.</p>
+            <p><strong>MINORS.</strong> Spectators under 18 must be accompanied by a parent or guardian. If you are buying this ticket for a minor, you are signing as their parent or guardian and accept these terms on their behalf.</p>
+            <p><strong>MEDIA.</strong> Photos and video captured at the event may be used by Chaos Cartel for promotion.</p>
+            <p><strong>CONDUCT.</strong> Alcohol and controlled substances are prohibited on-site until the day is called.</p>
+            <p>By typing your name and checking below, you agree to this waiver as a legally binding electronic signature.</p>
+          </div>
+          ) : (
           <div className="p-4 rounded-lg bg-card border border-cc-purple/30 max-h-56 overflow-y-auto text-sm text-muted-foreground space-y-2">
             <p><strong>ASSUMPTION OF RISK.</strong> Motorsport is dangerous. Drifting involves loss of traction, high-speed maneuvers, and proximity to walls, cones, and other vehicles. Damage to your vehicle, injury, and death are possible.</p>
             <p><strong>RELEASE.</strong> You release Chaos Cartel, FC Crew, the track owner, all crew and coaches, and other participants from any claim arising out of your participation, whether from negligence or otherwise, to the maximum extent permitted by law.</p>
@@ -417,6 +429,7 @@ function RegistrationForm({
             <p><strong>CONDUCT.</strong> Alcohol and controlled substances are prohibited on-site until the day is called. Follow all flag/marshal instructions.</p>
             <p>By typing your name and checking below, you agree to this waiver as a legally binding electronic signature.</p>
           </div>
+          )}
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <Field
               label="Type your full legal name to sign"
