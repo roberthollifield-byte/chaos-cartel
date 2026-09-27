@@ -459,7 +459,7 @@ async function applyEventConfig() {
   // Delete Round 3 if it exists (invite-only two-round schedule)
   await db.delete(events).where(eq(events.slug, "round-3-night-slide"));
 
-  // Upsert Round 1: Sat Sep 26, 2026 10 AM – 8 PM ET, Open Practice (no invite code)
+  // Upsert Round 1: Sat Sep 26, 2026 10 AM – 8 PM ET — CLOSED (event complete; hidden from public list, no new sales)
   await db.insert(events).values({
     slug: "round-1-forest-city",
     title: "ROUND 1",
@@ -475,7 +475,7 @@ async function applyEventConfig() {
     rideAlongSlots: 15,
     spectatorPriceCents: 1000,
     spectatorSlots: 45,
-    status: "published",
+    status: "closed",
     heroImageUrl: null,
     inviteCode: null,
     createdAt: Math.floor(Date.now() / 1000),
@@ -490,7 +490,7 @@ async function applyEventConfig() {
       driverSlots: 15,
       rideAlongSlots: 15,
       spectatorSlots: 45,
-      status: "published",
+      status: "closed",
       inviteCode: null,
     },
   });
@@ -531,7 +531,7 @@ async function applyEventConfig() {
     },
   });
 
-  console.log("[config] Events synced (2 published rounds, open registration)");
+  console.log("[config] Events synced (Round 1 closed, Round 2 open registration)");
 }
 
 // ============ PRODUCT CATALOG APPLY ============
