@@ -318,6 +318,7 @@ function RegistrationForm({
 
       {ticketType === "driver" && (
         <>
+          {(event.spectatorSlots > 0 || event.rideAlongSlots > 0) && (
           <FormSection title="BRING YOUR CREW" accent="cc-lime" icon={<Users size={18} />}>
             <div className="mb-4 p-4 rounded-lg bg-cc-lime/10 border border-cc-lime/40">
               <div className="flex items-start gap-3">
@@ -371,6 +372,7 @@ function RegistrationForm({
             </div>
             )}
           </FormSection>
+          )}
 
           <FormSection title="YOUR CAR" accent="cc-magenta">
             <div className="grid gap-4 sm:grid-cols-4">
