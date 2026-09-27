@@ -505,7 +505,7 @@ async function applyEventConfig() {
     venue: "Chaos Cartel Track",
     startsAt: 1792245600, // Sat Oct 17 2026 10:00 AM EDT
     endsAt: 1792281600,   // Sat Oct 17 2026 8:00 PM EDT
-    driverPriceCents: 12000,
+    driverPriceCents: 11000,
     driverSlots: 15,
     rideAlongPriceCents: 2500,
     rideAlongSlots: 15,
@@ -523,6 +523,7 @@ async function applyEventConfig() {
       description: "Open practice day. All-day open track. Drivers, ride-alongs, and spectators welcome.",
       startsAt: 1792245600,
       endsAt: 1792281600,
+      driverPriceCents: 11000, // $110 driver entry
       driverSlots: 15,
       rideAlongSlots: 15,
       spectatorSlots: 45,
@@ -703,7 +704,7 @@ export async function seed() {
     venue: "Chaos Cartel Track",
     startsAt: now + 42 * day,
     endsAt: now + 42 * day + 6 * 3600,
-    driverPriceCents: 12000,
+    driverPriceCents: 11000,
     driverSlots: 18,
     rideAlongPriceCents: 2500,
     rideAlongSlots: 32,
