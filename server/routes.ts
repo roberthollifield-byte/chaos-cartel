@@ -12,7 +12,8 @@ import {
   insertCrewSchema,
 } from "@shared/schema";
 import { z } from "zod";
-import { ensureConfirmationCode, sendConfirmationEmail, generateRosterPdf, ticketQrPng } from "./tickets";
+import { ensureConfirmationCode, sendConfirmationEmail, sendPlusOneWaiverEmail, generateRosterPdf, ticketQrPng } from "./tickets";
+import nodeCrypto from "node:crypto";
 
 const STRIPE_API_LIVE = "https://api.stripe.com/v1";
 // Stripe is called directly on Railway using STRIPE_SECRET_KEY. In the preview
@@ -206,6 +207,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Normalize driver-only add-ons (ignored on other ticket types).
       const isDriver = payload.ticketType === "driver";
       const crewMemberName = isDriver ? (payload.crewMemberName?.trim() || null) : null;
+      // Plus 1 waiver link: only for drivers; if a plus 1 name is given with an email we
+      // email them a waiver to sign before admission.
+      const plusOneEmail = isDriver ? (payload.plusOneEmail?.trim().toLowerCase() || null) : null;
+      if (plusOneEmail && !crewMemberName) {
+        return res.status(400).json({ message: "Enter your plus 1's name along with their email." });
+      }
+      const plusOneWaiverToken = plusOneEmail ? nodeCrypto.randomBytes(18).toString("base64url") : null;
       const extraSpectators = isDriver ? Math.max(0, Math.min(4, payload.extraSpectators ?? 0)) : 0;
       const extraRideAlongs = isDriver ? Math.max(0, Math.min(4, payload.extraRideAlongs ?? 0)) : 0;
 
@@ -255,6 +263,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         techInspection: payload.techInspection ? JSON.stringify(payload.techInspection) : null,
         experienceLevel: payload.experienceLevel || null,
         crewMemberName,
+        plusOneEmail,
+        plusOneWaiverToken,
         extraSpectators,
         extraRideAlongs,
         waiverSigned: true,
@@ -777,6 +787,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       extraRideAlongs: (reg as any).extraRideAlongs || 0,
       extraRideAlongPriceCents: event.rideAlongPriceCents,
       totalPaidCents: reg.amountPaidCents,
+      plusOneEmail: reg.plusOneEmail || null,
     });
     if ((emailResult as any)?.sent) {
       try {
@@ -785,7 +796,85 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         console.error(`[email] failed to record emailSentAt for reg ${reg.id}:`, err);
       }
     }
+    // Plus 1 waiver link (first send only; admin resend passes force=true).
+    if (reg.plusOneEmail && !reg.plusOneWaiverEmailSentAt && !reg.plusOneWaiverSignedAt) {
+      await sendPlusOneWaiverForRegistration(reg.id).catch(e => console.error("[plus1] waiver email failed", e));
+    }
   }
+
+  // Send (or resend) the plus 1 waiver email for a paid driver registration.
+  async function sendPlusOneWaiverForRegistration(registrationId: number) {
+    let reg = await storage.getRegistrationById(registrationId);
+    if (!reg || !reg.plusOneEmail) return { sent: false, error: "no plus 1 email" };
+    if (reg.paymentStatus !== "paid" && reg.paymentStatus !== "preview") return { sent: false, error: "not paid" };
+    if (!reg.plusOneWaiverToken) {
+      reg = await storage.updateRegistrationById(reg.id, { plusOneWaiverToken: nodeCrypto.randomBytes(18).toString("base64url") } as any);
+    }
+    const event = await storage.getEventById(reg!.eventId);
+    if (!event) return { sent: false, error: "no event" };
+    const eventDate = new Date(event.startsAt * 1000).toLocaleString("en-US", {
+      weekday: "long", month: "long", day: "numeric", year: "numeric",
+      hour: "numeric", minute: "2-digit", timeZone: "America/New_York", timeZoneName: "short",
+    });
+    const result = await sendPlusOneWaiverEmail({
+      to: reg!.plusOneEmail!,
+      plusOneName: reg!.crewMemberName || null,
+      driverName: `${reg!.firstName} ${reg!.lastName}`,
+      eventTitle: event.title,
+      eventSubtitle: event.subtitle,
+      eventDate,
+      waiverUrl: `${PUBLIC_BASE_URL}/#/waiver/${reg!.plusOneWaiverToken}`,
+    });
+    if ((result as any)?.sent) {
+      await storage.updateRegistrationById(reg!.id, { plusOneWaiverEmailSentAt: Math.floor(Date.now() / 1000) } as any);
+    }
+    return result;
+  }
+
+  // ============ PLUS 1 WAIVER (public, token-gated) ============
+  app.get("/api/plus-one-waiver/:token", async (req, res) => {
+    const reg = await storage.getRegistrationByPlusOneToken(String(req.params.token));
+    if (!reg || (reg.paymentStatus !== "paid" && reg.paymentStatus !== "preview")) {
+      return res.status(404).json({ message: "Waiver link not found" });
+    }
+    const event = await storage.getEventById(reg.eventId);
+    res.json({
+      plusOneName: reg.crewMemberName || null,
+      driverName: `${reg.firstName} ${reg.lastName}`,
+      signedAt: reg.plusOneWaiverSignedAt || null,
+      signatureName: reg.plusOneWaiverSignatureName || null,
+      event: event ? { title: event.title, subtitle: event.subtitle, startsAt: event.startsAt, endsAt: event.endsAt, venue: event.venue, location: event.location } : null,
+    });
+  });
+
+  app.post("/api/plus-one-waiver/:token", async (req, res) => {
+    const body = z.object({ signatureName: z.string().trim().min(2).max(120), agreed: z.literal(true) }).safeParse(req.body);
+    if (!body.success) return res.status(400).json({ message: "Type your full legal name and check the box to sign." });
+    const reg = await storage.getRegistrationByPlusOneToken(String(req.params.token));
+    if (!reg || (reg.paymentStatus !== "paid" && reg.paymentStatus !== "preview")) {
+      return res.status(404).json({ message: "Waiver link not found" });
+    }
+    if (reg.plusOneWaiverSignedAt) {
+      return res.json({ ok: true, alreadySigned: true, signedAt: reg.plusOneWaiverSignedAt });
+    }
+    const now = Math.floor(Date.now() / 1000);
+    await storage.updateRegistrationById(reg.id, {
+      plusOneWaiverSignedAt: now,
+      plusOneWaiverSignatureName: body.data.signatureName,
+    } as any);
+    res.json({ ok: true, signedAt: now });
+  });
+
+  // Admin: resend the plus 1 waiver email.
+  app.post("/api/admin/registrations/:id/resend-plus-one-waiver", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    const reg = await storage.getRegistrationById(id);
+    if (!reg) return res.status(404).json({ message: "Registration not found" });
+    if (!reg.plusOneEmail) return res.status(400).json({ message: "No plus 1 email on this registration" });
+    if (reg.plusOneWaiverSignedAt) return res.status(400).json({ message: "Plus 1 waiver already signed" });
+    const result = await sendPlusOneWaiverForRegistration(id);
+    res.json({ ok: !!(result as any)?.sent, ...result });
+  });
 
   // Admin: manually resend the confirmation email for a registration.
   app.post("/api/admin/registrations/:id/resend-email", requireAdmin, async (req, res) => {
@@ -880,7 +969,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const rows = await storage.listRegistrations(eventId);
     const headers = [
       "id","event_id","ticket_type","first_name","last_name","email","phone",
-      "car","experience","crew_member_name","extra_spectators","extra_ride_alongs","waiver_signed","waiver_signature","amount_paid_cents",
+      "car","experience","crew_member_name","plus_one_email","plus_one_waiver_signed","plus_one_waiver_signature","extra_spectators","extra_ride_alongs","waiver_signed","waiver_signature","amount_paid_cents",
       "payment_status","created_at",
     ];
     const csv = [
@@ -896,6 +985,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `"${[r.carYear, r.carMake, r.carModel, r.carColor].filter(Boolean).join(" ")}"`,
         r.experienceLevel || "",
         `"${(r as any).crewMemberName || ""}"`,
+        `"${r.plusOneEmail || ""}"`,
+        r.plusOneEmail ? (r.plusOneWaiverSignedAt ? "yes" : "no") : "",
+        `"${r.plusOneWaiverSignatureName || ""}"`,
         (r as any).extraSpectators || 0,
         (r as any).extraRideAlongs || 0,
         r.waiverSigned ? "yes" : "no",
@@ -1023,6 +1115,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         confirmationCode: r.confirmationCode,
         checkedInAt: r.checkedInAt,
         checkedInBy: r.checkedInBy,
+        plusOneName: r.crewMemberName || null,
+        plusOneEmail: r.plusOneEmail || null,
+        plusOneWaiverSignedAt: r.plusOneWaiverSignedAt || null,
       })),
     });
   });
@@ -1070,6 +1165,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         car: [reg.carYear, reg.carMake, reg.carModel].filter(Boolean).join(" ") || null,
         checkedInAt: reg.checkedInAt, checkedInBy: reg.checkedInBy,
       },
+      plusOne: reg.plusOneEmail || reg.crewMemberName ? {
+        name: reg.crewMemberName || null,
+        email: reg.plusOneEmail || null,
+        waiverRequired: !!reg.plusOneEmail,
+        waiverSignedAt: reg.plusOneWaiverSignedAt || null,
+        waiverSignatureName: reg.plusOneWaiverSignatureName || null,
+      } : null,
       event: event ? { id: event.id, title: event.title, subtitle: event.subtitle } : null,
     });
   });
@@ -1087,6 +1189,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ok: false, reason: "already_checked_in",
         message: "Already checked in",
         checkedInAt: reg.checkedInAt, checkedInBy: reg.checkedInBy,
+        plusOne: reg.plusOneEmail || reg.crewMemberName ? {
+          name: reg.crewMemberName || null,
+          email: reg.plusOneEmail || null,
+          waiverRequired: !!reg.plusOneEmail,
+          waiverSignedAt: reg.plusOneWaiverSignedAt || null,
+          waiverSignatureName: reg.plusOneWaiverSignatureName || null,
+        } : null,
+
         registration: { id: reg.id, firstName: reg.firstName, lastName: reg.lastName, ticketType: reg.ticketType },
       });
     }
@@ -1096,6 +1206,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({
       ok: true,
       message: "Checked in",
+      plusOne: reg.plusOneEmail || reg.crewMemberName ? {
+        name: reg.crewMemberName || null,
+        email: reg.plusOneEmail || null,
+        waiverRequired: !!reg.plusOneEmail,
+        waiverSignedAt: reg.plusOneWaiverSignedAt || null,
+        waiverSignatureName: reg.plusOneWaiverSignatureName || null,
+      } : null,
       registration: { id: updated!.id, firstName: updated!.firstName, lastName: updated!.lastName, ticketType: updated!.ticketType, checkedInAt: updated!.checkedInAt },
     });
   });
@@ -1116,14 +1233,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const all = await storage.listRegistrations();
       const unsent = all.filter((r: any) => r.paymentStatus === "paid" && !r.emailSentAt);
-      if (unsent.length === 0) return;
-      console.log(`[email-sweep] Found ${unsent.length} paid registration(s) without a sent confirmation email; resending`);
+      if (unsent.length > 0) console.log(`[email-sweep] Found ${unsent.length} paid registration(s) without a sent confirmation email; resending`);
       for (const r of unsent) {
         try {
           await issueTicketAndEmail(r.id);
         } catch (err) {
           console.error(`[email-sweep] Failed to send for reg ${r.id}:`, err);
         }
+      }
+      // Plus 1 waiver emails that never went out (confirmation sent, waiver email failed).
+      const plusOneUnsent = all.filter((r: any) => r.paymentStatus === "paid" && r.emailSentAt && r.plusOneEmail && !r.plusOneWaiverEmailSentAt && !r.plusOneWaiverSignedAt);
+      for (const r of plusOneUnsent) {
+        try { await sendPlusOneWaiverForRegistration(r.id); } catch (err) { console.error(`[email-sweep] plus 1 waiver failed for reg ${r.id}:`, err); }
       }
     } catch (err) {
       console.error("[email-sweep] Sweep failed:", err);

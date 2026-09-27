@@ -11,6 +11,7 @@ interface CheckinResult {
   registration?: { id: number; firstName: string; lastName: string; ticketType: string; checkedInAt?: number | null };
   checkedInAt?: number | null;
   checkedInBy?: string | null;
+  plusOne?: { name: string | null; email: string | null; waiverRequired: boolean; waiverSignedAt: number | null; waiverSignatureName: string | null } | null;
 }
 
 type Mode = "idle" | "scanning" | "processing" | "result";
@@ -214,6 +215,23 @@ export default function AdminCheckinPage() {
               <div className="mt-4 border-t border-white/10 pt-4">
                 <div className="text-3xl font-bold">{result.registration.firstName} {result.registration.lastName}</div>
                 <div className="mt-2 font-mono text-xs tracking-widest text-cc-cyan">// {ticketLabel(result.registration.ticketType)}</div>
+                {result.plusOne && (
+                  result.plusOne.waiverRequired ? (
+                    result.plusOne.waiverSignedAt ? (
+                      <div className="mt-4 p-3 rounded-lg border border-cc-lime/60 bg-cc-lime/10 flex items-start gap-2" data-testid="plus-one-ok">
+                        <CheckCircle2 size={20} className="text-cc-lime shrink-0 mt-0.5" />
+                        <div className="text-sm"><strong className="text-cc-lime">PLUS 1 OK TO ADMIT</strong> — {result.plusOne.name || "Plus 1"} signed the waiver{result.plusOne.waiverSignatureName ? ` as "${result.plusOne.waiverSignatureName}"` : ""}.</div>
+                      </div>
+                    ) : (
+                      <div className="mt-4 p-3 rounded-lg border-2 border-red-500/70 bg-red-500/10 flex items-start gap-2" data-testid="plus-one-blocked">
+                        <XCircle size={20} className="text-red-400 shrink-0 mt-0.5" />
+                        <div className="text-sm"><strong className="text-red-400">DO NOT ADMIT PLUS 1 YET</strong> — {result.plusOne.name || "Plus 1"} has not signed the waiver. Have them open the link sent to {result.plusOne.email} and sign before entering.</div>
+                      </div>
+                    )
+                  ) : (
+                    <div className="mt-3 text-sm text-foreground/60">+1 free crew: {result.plusOne.name}</div>
+                  )
+                )}
                 {result.reason === "already_checked_in" && result.checkedInAt && (
                   <div className="mt-3 text-sm text-foreground/60">
                     Checked in at {new Date(result.checkedInAt * 1000).toLocaleString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" })}

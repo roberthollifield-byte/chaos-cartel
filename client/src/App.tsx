@@ -23,6 +23,7 @@ import CartPage from "@/pages/cart";
 import ThanksPage from "@/pages/thanks";
 import AdminPage from "@/pages/admin";
 import AdminCheckinPage from "@/pages/admin-checkin";
+import PlusOneWaiverPage from "@/pages/plus-one-waiver";
 
 function AppRouter() {
   return (
@@ -35,6 +36,7 @@ function AppRouter() {
       <Route path="/merch" component={MerchPage} />
       <Route path="/cart" component={CartPage} />
       <Route path="/thanks" component={ThanksPage} />
+      <Route path="/waiver/:token" component={PlusOneWaiverPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/admin/checkin" component={AdminCheckinPage} />
       <Route component={NotFound} />

@@ -3,6 +3,7 @@ import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Calendar, Clock, MapPin, AlertTriangle, Wrench, ArrowLeft, Users, Plus, Minus, Gift } from "lucide-react";
 import { Shell } from "@/components/brand/Shell";
+import { SpectatorWaiverText } from "@/components/spectator-waiver-text";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { EventAvailability } from "@shared/schema";
@@ -228,12 +229,15 @@ function RegistrationForm({
     waiverSignatureName: "", waiverAgreed: false, rideAlongWaiverAgreed: false,
     inviteCode: "",
     crewMemberName: "",
+    plusOneEmail: "",
     extraSpectators: 0,
     extraRideAlongs: 0,
   });
   const [errors, setErrors] = useState<Record<string,string>>({});
 
   const meta = TICKET_META[ticketType];
+  // Drivers-only events (e.g. Setup Class): no crew add-ons; the free plus 1 signs a waiver by email.
+  const plusOneWaiverMode = event.spectatorSlots === 0 && event.rideAlongSlots === 0;
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
   function validate() {
@@ -250,6 +254,12 @@ function RegistrationForm({
       if (!(form.tires && form.brakes && form.seatbelt && form.battery && form.fluids && form.rollCageOrBar && form.helmet)) {
         errs.tech = "You must confirm every tech inspection item to drive.";
       }
+    }
+    if (ticketType === "driver" && plusOneWaiverMode) {
+      const pn = form.crewMemberName.trim(), pe = form.plusOneEmail.trim();
+      if (pe && !pn) errs.crewMemberName = "Enter your plus 1's name";
+      if (pn && !/\S+@\S+\.\S+/.test(pe)) errs.plusOneEmail = "Valid email required so we can send their waiver";
+      if (pe && pe.toLowerCase() === form.email.trim().toLowerCase()) errs.plusOneEmail = "Use your plus 1's own email, not yours";
     }
     if (meta.needsWaiver) {
       if (!form.waiverSignatureName) errs.waiverSignatureName = "Type your full name to sign";
@@ -287,6 +297,7 @@ function RegistrationForm({
         battery: form.battery, fluids: form.fluids, rollCageOrBar: form.rollCageOrBar, helmet: form.helmet,
       };
       payload.crewMemberName = form.crewMemberName?.trim() || undefined;
+      if (plusOneWaiverMode) payload.plusOneEmail = form.plusOneEmail?.trim() || undefined;
       payload.extraSpectators = Math.max(0, Math.min(4, Number(form.extraSpectators) || 0));
       payload.extraRideAlongs = Math.max(0, Math.min(4, Number(form.extraRideAlongs) || 0));
     }
@@ -322,6 +333,39 @@ function RegistrationForm({
 
       {ticketType === "driver" && (
         <>
+          {plusOneWaiverMode && (
+          <FormSection title="YOUR PLUS 1" accent="cc-lime" icon={<Gift size={18} />}>
+            <div className="mb-4 p-4 rounded-lg bg-cc-lime/10 border border-cc-lime/40" data-testid="box-plus-one">
+              <div className="flex items-start gap-3">
+                <Gift className="text-cc-lime shrink-0 mt-0.5" size={20} />
+                <div>
+                  <div className="font-display font-extrabold text-cc-lime text-lg italic tracking-wide">1 FREE PLUS 1 INCLUDED</div>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Bringing someone? Add their name and email. We'll email them a waiver link after you check out.
+                    Your plus 1 must sign the waiver before they're admitted at the gate. Coming solo? Leave this blank.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field
+                label="Plus 1 full name"
+                value={form.crewMemberName}
+                onChange={(v: string)=>set("crewMemberName",v)}
+                error={errors.crewMemberName}
+                data-testid="input-plusOneName"
+              />
+              <Field
+                label="Plus 1 email (waiver link goes here)"
+                type="email"
+                value={form.plusOneEmail}
+                onChange={(v: string)=>set("plusOneEmail",v)}
+                error={errors.plusOneEmail}
+                data-testid="input-plusOneEmail"
+              />
+            </div>
+          </FormSection>
+          )}
           {(event.spectatorSlots > 0 || event.rideAlongSlots > 0) && (
           <FormSection title="BRING YOUR CREW" accent="cc-lime" icon={<Users size={18} />}>
             <div className="mb-4 p-4 rounded-lg bg-cc-lime/10 border border-cc-lime/40">
@@ -445,16 +489,7 @@ function RegistrationForm({
             </div>
           )}
           {ticketType === "spectator" ? (
-          <div className="p-4 rounded-lg bg-card border border-cc-purple/30 max-h-56 overflow-y-auto text-sm text-muted-foreground space-y-2" data-testid="text-spectator-waiver">
-            <p><strong>ASSUMPTION OF RISK.</strong> Drifting is a dangerous motorsport. Even in spectator areas, you may be exposed to cars losing control, flying debris (tire pieces, rocks, parts), tire smoke, loud noise, and moving vehicles in the pit and parking areas. Injury and death are possible. You voluntarily accept these risks.</p>
-            <p><strong>STAY IN SPECTATOR AREAS.</strong> You will stay behind barriers and in marked spectator zones, never enter the track or hot pit, and follow all instructions from Chaos Cartel crew, marshals, and track staff. You may be removed without refund for ignoring safety rules.</p>
-            <p><strong>RELEASE.</strong> You release Chaos Cartel, FC Crew, the track owner, all crew, volunteers, and participants from any claim arising out of your attendance, whether from negligence or otherwise, to the maximum extent permitted by law.</p>
-            <p><strong>MEDICAL.</strong> You authorize emergency medical treatment if required. Hearing protection is strongly recommended.</p>
-            <p><strong>MINORS.</strong> Spectators under 18 must be accompanied by a parent or guardian. If you are buying this ticket for a minor, you are signing as their parent or guardian and accept these terms on their behalf.</p>
-            <p><strong>MEDIA.</strong> Photos and video captured at the event may be used by Chaos Cartel for promotion.</p>
-            <p><strong>CONDUCT.</strong> Alcohol and controlled substances are prohibited on-site until the day is called.</p>
-            <p>By typing your name and checking below, you agree to this waiver as a legally binding electronic signature.</p>
-          </div>
+          <SpectatorWaiverText />
           ) : (
           <div className="p-4 rounded-lg bg-card border border-cc-purple/30 max-h-56 overflow-y-auto text-sm text-muted-foreground space-y-2">
             <p><strong>ASSUMPTION OF RISK.</strong> Motorsport is dangerous. Drifting involves loss of traction, high-speed maneuvers, and proximity to walls, cones, and other vehicles. Damage to your vehicle, injury, and death are possible.</p>

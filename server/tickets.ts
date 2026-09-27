@@ -62,6 +62,7 @@ export async function sendConfirmationEmail(opts: {
   extraRideAlongs?: number;
   extraRideAlongPriceCents?: number;
   totalPaidCents?: number;
+  plusOneEmail?: string | null;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
@@ -107,6 +108,72 @@ export async function sendConfirmationEmail(opts: {
   }
 }
 
+// ============ PLUS 1 WAIVER EMAIL (Resend) ============
+// Sent to the driver's free guest with a link to sign the spectator waiver online.
+export async function sendPlusOneWaiverEmail(opts: {
+  to: string;
+  plusOneName: string | null;
+  driverName: string;
+  eventTitle: string;
+  eventSubtitle: string | null;
+  eventDate: string;
+  waiverUrl: string;
+}) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.log(`[email] RESEND_API_KEY not set — skipping plus 1 waiver email to ${opts.to}`);
+    return { skipped: true };
+  }
+  const from = process.env.RESEND_FROM || "Chaos Cartel <tickets@chaoscartel.net>";
+  const hi = opts.plusOneName ? `Hey ${escapeHtml(opts.plusOneName.split(" ")[0])}` : "Hey";
+  const html = `<!doctype html>
+<html>
+<body style="margin:0;padding:0;background:#0a0a0a;color:#e6e6e6;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:32px 24px;">
+    <div style="text-align:center;padding:8px 0 24px;">
+      <div style="font-size:12px;letter-spacing:3px;color:#00ffa3;font-family:monospace;">// CHAOS CARTEL</div>
+      <div style="font-size:11px;letter-spacing:2px;color:#888;font-family:monospace;margin-top:4px;">// WAIVER REQUIRED</div>
+    </div>
+    <h1 style="color:#00ffa3;font-size:28px;font-weight:900;font-style:italic;margin:0 0 12px;text-align:center;">YOU'RE ON THE LIST</h1>
+    <p style="color:#ccc;font-size:15px;line-height:1.6;text-align:center;margin:0 0 24px;">${hi} — ${escapeHtml(opts.driverName)} is bringing you as their plus 1. Before you can be admitted at the gate, you need to sign the spectator waiver.</p>
+    <div style="background:#111;border:1px solid #222;border-radius:12px;padding:24px;margin:0 0 24px;">
+      <div style="font-family:monospace;font-size:11px;letter-spacing:2px;color:#ff2eb8;margin-bottom:12px;">// EVENT</div>
+      <div style="font-size:20px;font-weight:800;color:#fff;">${escapeHtml(opts.eventTitle)}</div>
+      ${opts.eventSubtitle ? `<div style="font-size:15px;color:#00ffa3;font-style:italic;margin-top:4px;">${escapeHtml(opts.eventSubtitle)}</div>` : ""}
+      <div style="font-size:14px;color:#bbb;margin-top:12px;">${escapeHtml(opts.eventDate)}</div>
+      <div style="font-size:14px;color:#bbb;">${TRACK_ADDRESS_LINE1}, ${TRACK_ADDRESS_LINE2}</div>
+    </div>
+    <div style="text-align:center;margin:0 0 24px;">
+      <a href="${opts.waiverUrl}" style="display:inline-block;background:#c8ff00;color:#000;font-weight:800;font-size:16px;padding:16px 32px;border-radius:8px;text-decoration:none;">SIGN THE WAIVER</a>
+    </div>
+    <p style="color:#888;font-size:12px;line-height:1.6;text-align:center;margin:0;">Takes about a minute. If the button doesn't work, copy this link into your browser:<br/><span style="color:#00e5ff;word-break:break-all;">${opts.waiverUrl}</span></p>
+    <p style="color:#666;font-size:12px;text-align:center;margin:24px 0 0;">chaoscartel.net</p>
+  </div>
+</body>
+</html>`;
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from,
+        to: [opts.to],
+        subject: `Sign your waiver — ${opts.driverName} is bringing you to Chaos Cartel`,
+        html,
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      console.error(`[email] Plus 1 waiver send failed ${res.status}: ${text}`);
+      return { sent: false, error: text };
+    }
+    return { sent: true };
+  } catch (err: any) {
+    console.error("[email] plus 1 waiver send error:", err?.message || err);
+    return { sent: false, error: String(err?.message || err) };
+  }
+}
+
 function money(cents: number): string {
   return `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
 }
@@ -129,6 +196,7 @@ function confirmationEmailHtml(o: {
   extraRideAlongs?: number;
   extraRideAlongPriceCents?: number;
   totalPaidCents?: number;
+  plusOneEmail?: string | null;
 }) {
   const isDriver = o.ticketType === "driver";
   const extraSpec = o.extraSpectators || 0;
@@ -181,6 +249,12 @@ function confirmationEmailHtml(o: {
     </div>
 
     ${breakdownBlock}
+
+    ${isDriver && o.plusOneEmail ? `
+    <div style="background:#1a0f14;border:1px solid #ff2eb8;border-radius:12px;padding:20px;margin:0 0 24px;">
+      <div style="font-family:monospace;font-size:11px;letter-spacing:2px;color:#ff2eb8;margin-bottom:8px;">// PLUS 1 WAIVER</div>
+      <div style="font-size:14px;color:#ddd;line-height:1.6;">We emailed a waiver link to your plus 1${o.crewMemberName ? ` (${escapeHtml(o.crewMemberName)})` : ""} at <strong style="color:#fff;">${escapeHtml(o.plusOneEmail)}</strong>. They must sign it before they can be admitted at the gate.</div>
+    </div>` : ""}
 
     <div style="background:#fff;border-radius:12px;padding:20px;text-align:center;margin:0 0 16px;">
       <div style="font-family:monospace;font-size:11px;letter-spacing:2px;color:#000;margin-bottom:12px;">// SHOW AT GATE</div>

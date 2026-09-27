@@ -107,6 +107,11 @@ export async function bootstrapSchema() {
     ALTER TABLE registrations ADD COLUMN IF NOT EXISTS extra_spectators INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE registrations ADD COLUMN IF NOT EXISTS extra_ride_alongs INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE registrations ADD COLUMN IF NOT EXISTS email_sent_at BIGINT;
+    ALTER TABLE registrations ADD COLUMN IF NOT EXISTS plus_one_email TEXT;
+    ALTER TABLE registrations ADD COLUMN IF NOT EXISTS plus_one_waiver_token TEXT;
+    ALTER TABLE registrations ADD COLUMN IF NOT EXISTS plus_one_waiver_email_sent_at BIGINT;
+    ALTER TABLE registrations ADD COLUMN IF NOT EXISTS plus_one_waiver_signed_at BIGINT;
+    ALTER TABLE registrations ADD COLUMN IF NOT EXISTS plus_one_waiver_signature_name TEXT;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_registrations_confirmation_code ON registrations (confirmation_code);
     CREATE TABLE IF NOT EXISTS products (
       id SERIAL PRIMARY KEY,
@@ -199,6 +204,7 @@ export interface IStorage {
   deleteUnpaidRegistrations(eventId?: number): Promise<number>;
   getRegistrationById(id: number): Promise<Registration | undefined>;
   getRegistrationByConfirmationCode(code: string): Promise<Registration | undefined>;
+  getRegistrationByPlusOneToken(token: string): Promise<Registration | undefined>;
   countBookedByType(eventId: number): Promise<{ driver: number; ride_along: number; spectator: number }>;
 
   // Products
@@ -289,6 +295,9 @@ export class DatabaseStorage implements IStorage {
   }
   async updateRegistrationById(id: number, patch: Partial<Registration>) {
     return first(await db.update(registrations).set(patch).where(eq(registrations.id, id)).returning());
+  }
+  async getRegistrationByPlusOneToken(token: string) {
+    return first(await db.select().from(registrations).where(eq(registrations.plusOneWaiverToken, token)));
   }
   async getRegistrationByConfirmationCode(code: string) {
     return first(await db.select().from(registrations).where(eq(registrations.confirmationCode, code)));

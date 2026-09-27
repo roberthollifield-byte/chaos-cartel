@@ -91,6 +91,13 @@ export const registrations = pgTable("registrations", {
   crewMemberName: text("crew_member_name"), // free bring-a-friend, driver only
   extraSpectators: integer("extra_spectators").notNull().default(0), // paid extra spectator seats
   extraRideAlongs: integer("extra_ride_alongs").notNull().default(0), // paid extra ride-along seats
+  // Plus 1 waiver (drivers-only events like the Setup Class): the free guest gets an emailed
+  // link to sign the spectator waiver before admission.
+  plusOneEmail: text("plus_one_email"),
+  plusOneWaiverToken: text("plus_one_waiver_token"),
+  plusOneWaiverEmailSentAt: bigint("plus_one_waiver_email_sent_at", { mode: "number" }),
+  plusOneWaiverSignedAt: bigint("plus_one_waiver_signed_at", { mode: "number" }),
+  plusOneWaiverSignatureName: text("plus_one_waiver_signature_name"),
   // Confirmation email status (unix seconds when Resend accepted the send). Null = never sent.
   emailSentAt: bigint("email_sent_at", { mode: "number" }),
   createdAt: bigint("created_at", { mode: "number" }).notNull().default(0),
@@ -134,6 +141,7 @@ export const bookingPayloadSchema = z.object({
   experienceLevel: z.enum(["beginner", "intermediate", "advanced"]).optional(),
   // Driver crew add-ons
   crewMemberName: z.string().max(80).optional(),
+  plusOneEmail: z.string().email().max(200).optional(),
   extraSpectators: z.number().int().min(0).max(4).optional(),
   extraRideAlongs: z.number().int().min(0).max(4).optional(),
   waiverSignatureName: z.string().min(1),

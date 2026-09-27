@@ -324,6 +324,15 @@ function RegistrationsPanel() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const resendPlusOne = useMutation({
+    mutationFn: async (id: number) => await apiRequest("POST", `/api/admin/registrations/${id}/resend-plus-one-waiver`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/registrations"] });
+      toast({ title: "Plus 1 waiver link resent" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   const purge = useMutation({
     mutationFn: async () => await apiRequest("POST", `/api/admin/registrations/purge-unpaid`, {}),
     onSuccess: (res: any) => {
@@ -388,6 +397,16 @@ function RegistrationsPanel() {
                   {r.ticketType === 'driver' ? (
                     <div className="space-y-0.5">
                       <div className="text-cc-lime">+1 free{(r as any).crewMemberName ? `: ${(r as any).crewMemberName}` : ''}</div>
+                      {(r as any).plusOneEmail && (
+                        (r as any).plusOneWaiverSignedAt
+                          ? <div className="text-cc-lime">waiver signed ✓</div>
+                          : <div className="text-cc-hot-pink">
+                              waiver NOT signed
+                              {r.paymentStatus === "paid" && (
+                                <button onClick={() => resendPlusOne.mutate(r.id)} disabled={resendPlusOne.isPending} className="ml-2 underline hover:text-cc-lime disabled:opacity-50" data-testid={`resend-plus-one-${r.id}`}>resend link</button>
+                              )}
+                            </div>
+                      )}
                       {((r as any).extraSpectators || 0) > 0 && <div className="text-cc-cyan">+{(r as any).extraSpectators} spec</div>}
                       {((r as any).extraRideAlongs || 0) > 0 && <div className="text-cc-magenta">+{(r as any).extraRideAlongs} ride-along</div>}
                     </div>
