@@ -37,6 +37,10 @@ const TICKET_META: Record<TicketType, { label: string; color: string; needsWaive
   },
 };
 
+// Driver box copy for the Driving & Chassis Setup Class (slug starts with "setup-class").
+const SETUP_CLASS_DRIVER_DESCRIPTION =
+  "One-on-one coaching and chassis setup with Josh and Rob. Only 8 cars. First 4 hours: driving instruction and setup work on your car so it fits your driving style. Last 4 hours: open drift to put it all to work. Bring your car, your helmet, and your line. Includes tech inspection and a free plus 1 (bring-a-friend).";
+
 export default function SessionDetailPage() {
   const { slug } = useParams();
   const [, setLocation] = useLocation();
@@ -174,7 +178,7 @@ export default function SessionDetailPage() {
         </div>
 
         <div className="mt-6 p-5 rounded-xl border border-cc-purple/40 bg-card/60">
-          <p className="text-sm text-muted-foreground">{meta.description}</p>
+          <p className="text-sm text-muted-foreground">{ticketType === "driver" && event.slug.startsWith("setup-class") ? SETUP_CLASS_DRIVER_DESCRIPTION : meta.description}</p>
         </div>
 
         {!showForm ? (
