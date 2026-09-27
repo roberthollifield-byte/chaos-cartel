@@ -170,6 +170,15 @@ function SessionCard({ event, accent }: { event: EventAvailability; accent: "lim
           <Clock size={16} className="text-cc-cyan" /> {formatTimeRange(event.startsAt, event.endsAt)}
         </div>
       </div>
+      {(event.spectatorSlots > 0 || event.rideAlongSlots > 0) && (
+        <div className="mt-4 p-3 rounded-lg border border-cc-magenta/50 bg-cc-magenta/10 text-sm" data-testid={`text-spectators-welcome-${event.slug}`}>
+          <div className="font-display font-extrabold italic text-cc-magenta tracking-wide">SPECTATORS WELCOME</div>
+          <div className="text-foreground/85 mt-0.5">
+            Come watch{event.spectatorSlots > 0 ? ` for $${(event.spectatorPriceCents / 100).toFixed(0)}` : ""}
+            {event.rideAlongSlots > 0 ? `, or ride along with a driver for $${(event.rideAlongPriceCents / 100).toFixed(0)}` : ""}.
+          </div>
+        </div>
+      )}
       <div className="mt-6 flex items-end justify-between">
         <div>
           <div className={`font-display font-extrabold text-3xl italic ${accentClass}`}>${price}</div>
