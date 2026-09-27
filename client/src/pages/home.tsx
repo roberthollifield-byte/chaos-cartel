@@ -7,10 +7,10 @@ import heroImg from "@/assets/hero-drift-car.jpg";
 import type { EventAvailability } from "@shared/schema";
 
 function formatDate(unix: number) {
-  return new Date(unix * 1000).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  return new Date(unix * 1000).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "America/New_York" });
 }
 function formatTimeRange(start: number, end: number) {
-  const opts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit", hour12: true };
+  const opts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "America/New_York" };
   return `${new Date(start * 1000).toLocaleTimeString("en-US", opts)} — ${new Date(end * 1000).toLocaleTimeString("en-US", opts)}`;
 }
 

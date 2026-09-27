@@ -5,10 +5,10 @@ import { Shell } from "@/components/brand/Shell";
 import type { EventAvailability } from "@shared/schema";
 
 function fmtDate(u: number) {
-  return new Date(u * 1000).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  return new Date(u * 1000).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" });
 }
 function fmtTime(u: number) {
-  return new Date(u * 1000).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  return new Date(u * 1000).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "America/New_York" });
 }
 
 export default function SessionsPage() {
