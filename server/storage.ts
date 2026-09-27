@@ -532,7 +532,45 @@ async function applyEventConfig() {
     },
   });
 
-  console.log("[config] Events synced (Round 1 closed, Round 2 open registration)");
+  // Upsert Setup Class: Sat Nov 7, 2026 9 AM – 6 PM ET (EST). Drivers only, 8 cars, $300; free +1 crew included.
+  const setupClassDescription = "Driving and chassis setup class. Only 8 cars, one-on-one with Josh and Rob. You may be a good driver with a car that's not suited to your driving style. We'll fix that too. 4 hours of instruction and setup, then 4 hours of open drift. Plenty of practice. Drivers only. Every entry includes a free plus 1.";
+  await db.insert(events).values({
+    slug: "setup-class-nov-7",
+    title: "DRIVING & SETUP CLASS",
+    subtitle: "Driving & Chassis Setup Class",
+    description: setupClassDescription,
+    location: "Forest City, NC",
+    venue: "Chaos Cartel Track",
+    startsAt: 1794060000, // Sat Nov 7 2026 9:00 AM EST
+    endsAt: 1794092400,   // Sat Nov 7 2026 6:00 PM EST
+    driverPriceCents: 30000,
+    driverSlots: 8,
+    rideAlongPriceCents: 2500,
+    rideAlongSlots: 0,
+    spectatorPriceCents: 1000,
+    spectatorSlots: 0,
+    status: "published",
+    heroImageUrl: null,
+    inviteCode: null,
+    createdAt: Math.floor(Date.now() / 1000),
+  }).onConflictDoUpdate({
+    target: events.slug,
+    set: {
+      title: "DRIVING & SETUP CLASS",
+      subtitle: "Driving & Chassis Setup Class",
+      description: setupClassDescription,
+      startsAt: 1794060000,
+      endsAt: 1794092400,
+      driverPriceCents: 30000, // $300 per car
+      driverSlots: 8,
+      rideAlongSlots: 0,
+      spectatorSlots: 0,
+      status: "published",
+      inviteCode: null,
+    },
+  });
+
+  console.log("[config] Events synced (Round 1 closed, Round 2 open registration, Setup Class open)");
 }
 
 // ============ PRODUCT CATALOG APPLY ============

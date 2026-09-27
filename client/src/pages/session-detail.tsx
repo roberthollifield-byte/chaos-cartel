@@ -86,6 +86,10 @@ export default function SessionDetailPage() {
     );
   }
 
+  // Only offer ticket types this event actually sells (0 slots = not offered, e.g. drivers-only class).
+  const offeredTypes = (["driver","ride_along","spectator"] as TicketType[]).filter(t =>
+    t === "driver" ? event.driverSlots > 0 : t === "ride_along" ? event.rideAlongSlots > 0 : event.spectatorSlots > 0
+  );
   const meta = TICKET_META[ticketType];
   const remaining =
     ticketType === "driver" ? event.driverRemaining :
@@ -134,8 +138,8 @@ export default function SessionDetailPage() {
           <h2 className="font-display font-extrabold text-3xl italic text-cc-magenta text-shadow-neon-magenta cc-skew mb-6">
             <span className="slash-under">PICK YOUR ENTRY</span>
           </h2>
-          <div className="grid gap-4 md:grid-cols-3">
-            {(["driver","ride_along","spectator"] as TicketType[]).map(t => {
+          <div className={`grid gap-4 ${offeredTypes.length === 1 ? "md:grid-cols-1 max-w-md" : offeredTypes.length === 2 ? "md:grid-cols-2" : "md:grid-cols-3"}`}>
+            {offeredTypes.map(t => {
               const m = TICKET_META[t];
               const price = t === "driver" ? event.driverPriceCents : t === "ride_along" ? event.rideAlongPriceCents : event.spectatorPriceCents;
               const rem = t === "driver" ? event.driverRemaining : t === "ride_along" ? event.rideAlongRemaining : event.spectatorRemaining;
@@ -332,9 +336,11 @@ function RegistrationForm({
               onChange={(v: string)=>set("crewMemberName",v)}
               data-testid="input-crewMemberName"
             />
+            {(event.spectatorSlots > 0 || event.rideAlongSlots > 0) && (
             <div className="mt-5">
               <div className="text-xs font-mono tracking-widest text-cc-cyan mb-2">ADDITIONAL GUESTS (OPTIONAL)</div>
               <div className="grid gap-4 sm:grid-cols-2">
+                {event.spectatorSlots > 0 && (
                 <CrewStepper
                   label="Extra Spectator"
                   priceCents={event.spectatorPriceCents}
@@ -344,6 +350,8 @@ function RegistrationForm({
                   onChange={(v: number)=>set("extraSpectators", v)}
                   testIdPrefix="extras-spectator"
                 />
+                )}
+                {event.rideAlongSlots > 0 && (
                 <CrewStepper
                   label="Extra Ride-Along"
                   priceCents={event.rideAlongPriceCents}
@@ -353,6 +361,7 @@ function RegistrationForm({
                   onChange={(v: number)=>set("extraRideAlongs", v)}
                   testIdPrefix="extras-ridealong"
                 />
+                )}
               </div>
               {(form.extraSpectators > 0 || form.extraRideAlongs > 0) && (
                 <div className="mt-3 text-xs font-mono text-cc-magenta">
@@ -360,6 +369,7 @@ function RegistrationForm({
                 </div>
               )}
             </div>
+            )}
           </FormSection>
 
           <FormSection title="YOUR CAR" accent="cc-magenta">

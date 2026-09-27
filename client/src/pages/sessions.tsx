@@ -65,12 +65,16 @@ function SessionRow({ event }: { event: EventAvailability }) {
           <span className="px-3 py-1.5 rounded-full bg-cc-lime/15 text-cc-lime border border-cc-lime/40">
             DRIVER ${(event.driverPriceCents/100).toFixed(0)} · {event.driverRemaining} left · +1 CREW FREE
           </span>
+{event.rideAlongSlots > 0 && (
           <span className="px-3 py-1.5 rounded-full bg-cc-magenta/15 text-cc-magenta border border-cc-magenta/40">
             RIDE-ALONG ${(event.rideAlongPriceCents/100).toFixed(0)} · {event.rideAlongRemaining} left
           </span>
+          )}
+          {event.spectatorSlots > 0 && (
           <span className="px-3 py-1.5 rounded-full bg-cc-cyan/15 text-cc-cyan border border-cc-cyan/40">
             SPECTATOR ${(event.spectatorPriceCents/100).toFixed(0)} · {event.spectatorRemaining} left
           </span>
+          )}
         </div>
       </div>
       <div>
