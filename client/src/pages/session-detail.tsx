@@ -237,7 +237,8 @@ function RegistrationForm({
 
   const meta = TICKET_META[ticketType];
   // Drivers-only events (e.g. Setup Class): no crew add-ons; the free plus 1 signs a waiver by email.
-  const plusOneWaiverMode = event.spectatorSlots === 0 && event.rideAlongSlots === 0;
+  // Every event: the driver's free plus 1 gets an emailed waiver to sign before admission.
+  const plusOneWaiverMode = true;
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
   function validate() {
@@ -367,27 +368,10 @@ function RegistrationForm({
           </FormSection>
           )}
           {(event.spectatorSlots > 0 || event.rideAlongSlots > 0) && (
-          <FormSection title="BRING YOUR CREW" accent="cc-lime" icon={<Users size={18} />}>
-            <div className="mb-4 p-4 rounded-lg bg-cc-lime/10 border border-cc-lime/40">
-              <div className="flex items-start gap-3">
-                <Gift className="text-cc-lime shrink-0 mt-0.5" size={20} />
-                <div>
-                  <div className="font-display font-extrabold text-cc-lime text-lg italic tracking-wide">1 FREE CREW MEMBER</div>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Every driver entry includes 1 free bring-a-friend. Bring anyone — crew, family, ride buddy — no extra ticket needed.
-                  </p>
-                </div>
-              </div>
-            </div>
-            <Field
-              label="Free crew member name (optional)"
-              value={form.crewMemberName}
-              onChange={(v: string)=>set("crewMemberName",v)}
-              data-testid="input-crewMemberName"
-            />
+          <FormSection title="ADD MORE GUESTS" accent="cc-cyan" icon={<Users size={18} />}>
             {(event.spectatorSlots > 0 || event.rideAlongSlots > 0) && (
-            <div className="mt-5">
-              <div className="text-xs font-mono tracking-widest text-cc-cyan mb-2">ADDITIONAL GUESTS (OPTIONAL)</div>
+            <div>
+              <div className="text-xs font-mono tracking-widest text-cc-cyan mb-2">PAID EXTRA GUESTS (OPTIONAL)</div>
               <div className="grid gap-4 sm:grid-cols-2">
                 {event.spectatorSlots > 0 && (
                 <CrewStepper

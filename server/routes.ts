@@ -14,6 +14,7 @@ import {
 import { z } from "zod";
 import { ensureConfirmationCode, sendConfirmationEmail, sendPlusOneWaiverEmail, generateRosterPdf, ticketQrPng } from "./tickets";
 import nodeCrypto from "node:crypto";
+import { TRACK_ADDRESS } from "@shared/venue";
 
 const STRIPE_API_LIVE = "https://api.stripe.com/v1";
 // Stripe is called directly on Railway using STRIPE_SECRET_KEY. In the preview
@@ -776,7 +777,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       eventTitle: event.title,
       eventSubtitle: event.subtitle,
       eventDate,
-      eventLocation: `${event.venue ? event.venue + " \u2014 " : ""}${event.location}`,
+      eventLocation: `${event.venue ? event.venue + " \u2014 " : ""}${TRACK_ADDRESS}`,
       code,
       baseUrl,
       // Pricing breakdown for drivers with crew add-ons
