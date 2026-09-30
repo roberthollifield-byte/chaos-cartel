@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Zap, Calendar, Clock, Cone, Circle } from "lucide-react";
+import { Zap, Calendar, Clock, Cone, Circle, MapPin } from "lucide-react";
 import { Shell } from "@/components/brand/Shell";
 import { Marquee } from "@/components/brand/Marquee";
 import heroImg from "@/assets/hero-drift-car.jpg";
@@ -176,6 +176,9 @@ function SessionCard({ event, accent }: { event: EventAvailability; accent: "lim
           <div className="text-foreground/85 mt-0.5">
             Come watch{event.spectatorSlots > 0 ? ` for $${(event.spectatorPriceCents / 100).toFixed(0)}` : ""}
             {event.rideAlongSlots > 0 ? `, or ride along with a driver for $${(event.rideAlongPriceCents / 100).toFixed(0)}` : ""}.
+          </div>
+          <div className="flex items-center gap-1.5 text-foreground/85 mt-1.5" data-testid={`text-spectators-address-${event.slug}`}>
+            <MapPin size={14} className="text-cc-magenta shrink-0" /> 241 Vance Street, Forest City, NC 28043
           </div>
         </div>
       )}
