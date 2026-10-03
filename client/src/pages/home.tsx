@@ -4,7 +4,13 @@ import { Zap, Calendar, Clock, Cone, Circle, MapPin } from "lucide-react";
 import { Shell } from "@/components/brand/Shell";
 import { Marquee } from "@/components/brand/Marquee";
 import heroImg from "@/assets/hero-drift-car.jpg";
+import slidetoberTitle from "@/assets/slidetober-title.jpg";
 import type { EventAvailability } from "@shared/schema";
+
+// Event-specific title art shown on the homepage session card
+const EVENT_TITLE_ART: Record<string, { src: string; alt: string }> = {
+  "round-2-seat-time-saturday": { src: slidetoberTitle, alt: "Slide-Tober Drift Event" },
+};
 
 function formatDate(unix: number) {
   return new Date(unix * 1000).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "America/New_York" });
@@ -155,6 +161,18 @@ function SessionCard({ event, accent }: { event: EventAvailability; accent: "lim
       <div className="absolute -top-3 right-4 px-3 py-1 text-[10px] font-display font-extrabold tracking-widest rounded rotate-2" style={{ background: "hsl(74 92% 55%)", color: "hsl(240 12% 4%)" }}>
         {status}
       </div>
+      {EVENT_TITLE_ART[event.slug] && (
+        <img
+          src={EVENT_TITLE_ART[event.slug].src}
+          alt={EVENT_TITLE_ART[event.slug].alt}
+          className="-mx-2 mb-4 w-[calc(100%+1rem)] max-w-none h-auto rounded-lg"
+          style={{
+            WebkitMaskImage: "radial-gradient(ellipse 75% 85% at center, #000 55%, transparent 100%)",
+            maskImage: "radial-gradient(ellipse 75% 85% at center, #000 55%, transparent 100%)",
+          }}
+          data-testid={`img-title-art-${event.slug}`}
+        />
+      )}
       <div className="flex items-start gap-4">
         <Cone className={accentClass} size={44} strokeWidth={2} />
         <div className="flex-1">
