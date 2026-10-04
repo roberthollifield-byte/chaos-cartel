@@ -515,11 +515,11 @@ async function applyEventConfig() {
     startsAt: 1792245600, // Sat Oct 17 2026 10:00 AM EDT
     endsAt: 1792281600,   // Sat Oct 17 2026 8:00 PM EDT
     driverPriceCents: 11000,
-    driverSlots: 15,
+    driverSlots: 20,
     rideAlongPriceCents: 2500,
-    rideAlongSlots: 15,
+    rideAlongSlots: 30,
     spectatorPriceCents: 1000,
-    spectatorSlots: 45,
+    spectatorSlots: 60,
     status: "published",
     heroImageUrl: null,
     inviteCode: null,
@@ -533,9 +533,9 @@ async function applyEventConfig() {
       startsAt: 1792245600,
       endsAt: 1792281600,
       driverPriceCents: 11000, // $110 driver entry
-      driverSlots: 15,
-      rideAlongSlots: 15,
-      spectatorSlots: 45,
+      driverSlots: 20,
+      rideAlongSlots: 30,
+      spectatorSlots: 60,
       status: "published",
       inviteCode: null,
     },
