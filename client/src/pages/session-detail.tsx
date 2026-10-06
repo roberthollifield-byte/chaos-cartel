@@ -477,7 +477,7 @@ function RegistrationForm({
           ) : (
           <div className="p-4 rounded-lg bg-card border border-cc-purple/30 max-h-56 overflow-y-auto text-sm text-muted-foreground space-y-2">
             <p><strong>ASSUMPTION OF RISK.</strong> Motorsport is dangerous. Drifting involves loss of traction, high-speed maneuvers, and proximity to walls, cones, and other vehicles. Damage to your vehicle, injury, and death are possible.</p>
-            <p><strong>RELEASE.</strong> You release Chaos Cartel, FC Crew, the track owner, all crew and coaches, and other participants from any claim arising out of your participation, whether from negligence or otherwise, to the maximum extent permitted by law.</p>
+            <p><strong>RELEASE.</strong> You release Chaos Cartel, FC Crew, IGL Logistics, all crew and coaches, and other participants from any claim arising out of your participation, whether from negligence or otherwise, to the maximum extent permitted by law.</p>
             <p><strong>MEDICAL.</strong> You are physically fit to participate. You authorize emergency medical treatment if required.</p>
             <p><strong>MEDIA.</strong> Photos and video captured at the event may be used by Chaos Cartel for promotion.</p>
             <p><strong>CONDUCT.</strong> Alcohol and controlled substances are prohibited on-site until the day is called. Follow all flag/marshal instructions.</p>
