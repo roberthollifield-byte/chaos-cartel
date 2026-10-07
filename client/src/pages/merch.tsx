@@ -6,6 +6,7 @@ import { Shell } from "@/components/brand/Shell";
 import { useToast } from "@/hooks/use-toast";
 import { useCart } from "@/lib/cart";
 import type { Product } from "@shared/schema";
+import { SALES_OPEN } from "@shared/sales";
 
 // The API enriches products with per-size stock + aggregate totals.
 interface Variant { size: string | null; quantity: number; unlimitedStock: boolean; }
@@ -88,8 +89,8 @@ function ProductCard({ product, index, onBuy }: { product: ProductWithStock; ind
       <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{product.description}</p>
       <div className="mt-5 flex items-end justify-between gap-3 pt-4 border-t border-cc-purple/30">
         <div className={`font-display font-extrabold text-3xl italic text-${accent}`}>${(product.priceCents/100).toFixed(0)}</div>
-        <button onClick={onBuy} className="px-5 py-2.5 rounded-md btn-neon-lime text-sm" data-testid={`button-buy-${product.slug}`}>
-          ADD TO CART →
+        <button onClick={onBuy} disabled={!SALES_OPEN} className="px-5 py-2.5 rounded-md btn-neon-lime text-sm disabled:opacity-60 disabled:cursor-not-allowed" data-testid={`button-buy-${product.slug}`}>
+          {SALES_OPEN ? "ADD TO CART →" : "SALES CLOSED"}
         </button>
       </div>
     </div>

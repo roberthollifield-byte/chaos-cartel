@@ -6,6 +6,7 @@ import { Marquee } from "@/components/brand/Marquee";
 import heroImg from "@/assets/hero-drift-car.jpg";
 import slidetoberTitle from "@/assets/slidetober-title.jpg";
 import type { EventAvailability } from "@shared/schema";
+import { SALES_OPEN } from "@shared/sales";
 
 // Event-specific title art shown on the homepage session card
 const EVENT_TITLE_ART: Record<string, { src: string; alt: string }> = {
@@ -52,7 +53,7 @@ export default function HomePage() {
                 data-testid="button-register-practice"
                 className="inline-flex items-center gap-2 px-7 py-4 rounded-md btn-neon-lime"
               >
-                <Zap size={20} className="fill-black" /> PURCHASE TICKETS
+                <Zap size={20} className="fill-black" /> {SALES_OPEN ? "PURCHASE TICKETS" : "SALES CLOSED"}
               </Link>
               <Link
                 href="/sessions"
@@ -210,7 +211,7 @@ function SessionCard({ event, accent }: { event: EventAvailability; accent: "lim
           data-testid={`button-register-${event.slug}`}
           className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-md btn-neon-lime text-sm"
         >
-          PURCHASE TICKETS →
+          {SALES_OPEN ? "PURCHASE TICKETS →" : "SALES CLOSED"}
         </Link>
       </div>
     </div>

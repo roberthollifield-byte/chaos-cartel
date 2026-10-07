@@ -6,6 +6,7 @@ import { Shell } from "@/components/brand/Shell";
 import { useCart } from "@/lib/cart";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { SALES_OPEN } from "@shared/sales";
 
 interface ShippingQuote { shippingCents: number; label: string; etaDays: string; }
 
@@ -179,11 +180,11 @@ export default function CartPage() {
                 </div>
                 <button
                   type="submit"
-                  disabled={mutation.isPending || !quote || lines.length === 0}
+                  disabled={!SALES_OPEN || mutation.isPending || !quote || lines.length === 0}
                   className="w-full px-6 py-4 rounded-md btn-neon-lime text-base disabled:opacity-60"
                   data-testid="button-checkout"
                 >
-                  {mutation.isPending ? "REDIRECTING…" : `CHECKOUT — $${(totalCents/100).toFixed(2)} →`}
+                  {!SALES_OPEN ? "SALES CLOSED" : mutation.isPending ? "REDIRECTING…" : `CHECKOUT — $${(totalCents/100).toFixed(2)} →`}
                 </button>
                 <p className="text-[10px] font-mono tracking-widest text-foreground/40 text-center pt-1">
                   SECURE CHECKOUT VIA STRIPE
