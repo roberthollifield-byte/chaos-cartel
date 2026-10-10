@@ -1,4 +1,4 @@
-import { SALES_OPEN, SALES_CLOSED_MESSAGE } from "@shared/sales";
+import { TICKET_SALES_OPEN, MERCH_SALES_OPEN, SALES_CLOSED_MESSAGE } from "@shared/sales";
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from 'node:http';
 import session from 'express-session';
@@ -192,7 +192,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ============ BOOKING: CREATE STRIPE CHECKOUT ============
   app.post("/api/bookings", async (req, res, next) => {
     try {
-      if (!SALES_OPEN) return res.status(403).json({ message: SALES_CLOSED_MESSAGE });
+      if (!TICKET_SALES_OPEN) return res.status(403).json({ message: SALES_CLOSED_MESSAGE });
       const payload = bookingPayloadSchema.parse(req.body);
       const event = await storage.getEventById(payload.eventId);
       if (!event) return res.status(404).json({ message: "Event not found" });
@@ -362,7 +362,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ============ MERCH: CREATE STRIPE CHECKOUT ============
   app.post("/api/merch-orders", async (req, res, next) => {
     try {
-      if (!SALES_OPEN) return res.status(403).json({ message: SALES_CLOSED_MESSAGE });
+      if (!MERCH_SALES_OPEN) return res.status(403).json({ message: SALES_CLOSED_MESSAGE });
       const payload = merchOrderPayloadSchema.parse(req.body);
       const product = await storage.getProductById(payload.productId);
       if (!product || !product.inStock) return res.status(404).json({ message: "Product unavailable" });
@@ -453,7 +453,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // line_item per cart entry plus one flat shipping charge for the whole order.
   app.post("/api/cart-checkout", async (req, res, next) => {
     try {
-      if (!SALES_OPEN) return res.status(403).json({ message: SALES_CLOSED_MESSAGE });
+      if (!MERCH_SALES_OPEN) return res.status(403).json({ message: SALES_CLOSED_MESSAGE });
       const payload = cartCheckoutPayloadSchema.parse(req.body);
 
       // Load and validate every product server-side. Never trust client prices.

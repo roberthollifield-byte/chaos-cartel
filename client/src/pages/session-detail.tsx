@@ -1,4 +1,4 @@
-import { SALES_OPEN } from "@shared/sales";
+import { TICKET_SALES_OPEN } from "@shared/sales";
 import { useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -73,13 +73,13 @@ export default function SessionDetailPage() {
     return <Shell><div className="mx-auto max-w-7xl px-6 py-24"><div className="h-96 rounded-2xl bg-card animate-pulse" /></div></Shell>;
   }
 
-  if (event.status !== "published" || !SALES_OPEN) {
+  if (event.status !== "published" || !TICKET_SALES_OPEN) {
     return (
       <Shell>
         <section className="mx-auto max-w-2xl px-4 sm:px-6 lg:px-8 py-24 text-center">
           <p className="font-mono text-xs tracking-widest text-cc-cyan mb-3">// {event.title}</p>
-          <h1 className="font-display text-4xl sm:text-5xl mb-4">{SALES_OPEN ? "This session is closed" : "Sales are closed"}</h1>
-          <p className="text-muted-foreground mb-8">{SALES_OPEN ? "Ticket sales for this round have ended. Check out the next round below." : "Ticket sales are currently closed. Check back soon."}</p>
+          <h1 className="font-display text-4xl sm:text-5xl mb-4">{TICKET_SALES_OPEN ? "This session is closed" : "Sales are closed"}</h1>
+          <p className="text-muted-foreground mb-8">{TICKET_SALES_OPEN ? "Ticket sales for this round have ended. Check out the next round below." : "Ticket sales are currently closed. Check back soon."}</p>
           <button
             onClick={() => setLocation("/sessions")}
             className="inline-flex items-center gap-2 rounded-lg bg-cc-lime px-6 py-3 font-semibold text-black hover:opacity-90"
